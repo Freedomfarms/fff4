@@ -5,7 +5,7 @@ import { buildAreaPath, buildLinePath, money, parseMoney } from "../utils/format
 import { InfoDot, MetricCard } from "./Common.jsx";
 
 const CURRENT_OPEN_MONTH = "May";
-const TRUE_CASH_CHART_MAX = 1400000;
+const TRUE_CASH_CHART_MAX = 100000;
 const CHART_HEIGHT = 300;
 const MONTH_END_X = {
   May: 401,
@@ -292,7 +292,7 @@ export function DashboardView({
               key={label}
               style={{
                 position: "absolute",
-                top: index * 42,
+                top: (index / Math.max(yAxis.length - 1, 1)) * CHART_HEIGHT,
                 left: 0,
                 right: 0,
                 display: "flex",
