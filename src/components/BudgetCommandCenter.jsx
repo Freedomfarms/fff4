@@ -261,7 +261,31 @@ export function BudgetCommandCenter({ transactions, budgetRows, setBudgetRows })
                     boxShadow: `0 0 12px ${item.dot}`,
                   }}
                 />
-                <span style={{ fontSize: 20 }}>{item.icon}</span>
+                <button
+                  type="button"
+                  onDoubleClick={(event) => {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    setDeleteTarget({ id: item.id, name: item.name });
+                  }}
+                  title="Double click to delete category"
+                  style={{
+                    width: 34,
+                    height: 34,
+                    borderRadius: 10,
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    color: "#e6efff",
+                    fontSize: 20,
+                    background: "rgba(0,136,255,.08)",
+                    border: "1px solid rgba(0,216,255,.14)",
+                    cursor: "pointer",
+                    boxShadow: "inset 0 0 14px rgba(0,80,160,.05)",
+                  }}
+                >
+                  {item.icon}
+                </button>
                 <div style={{ display: "flex", alignItems: "center", gap: 14, width: "100%" }}>
                   <input
                     value={item.name}
@@ -355,14 +379,7 @@ export function BudgetCommandCenter({ transactions, budgetRows, setBudgetRows })
                 </div>
               </div>
 
-              <button
-                type="button"
-                onDoubleClick={(event) => {
-                  event.preventDefault();
-                  event.stopPropagation();
-                  setDeleteTarget({ id: item.id, name: item.name });
-                }}
-                title="Double click to delete category"
+              <div
                 style={{
                   color: "#e6efff",
                   fontSize: 22,
@@ -370,14 +387,10 @@ export function BudgetCommandCenter({ transactions, budgetRows, setBudgetRows })
                   textAlign: "right",
                   padding: "8px 10px",
                   width: "100%",
-                  cursor: "pointer",
-                  background: "transparent",
-                  border: "1px solid transparent",
-                  borderRadius: 8,
                 }}
               >
                 {money(item.spent)}
-              </button>
+              </div>
               <div
                 style={{
                   height: 11,
