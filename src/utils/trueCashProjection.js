@@ -83,7 +83,7 @@ export function buildTrueCashProjectionSchedule({
     const actualEnding = monthEndActuals[`${openYear}-${month}`];
     if (actualEnding === undefined) return null;
 
-    cumulativeAdjustments += Number(projectionAdjustments[month] || 0);
+    cumulativeAdjustments += parseMoney(projectionAdjustments[month]);
     const projectedEnding =
       actualEnding + LOCKED_PROJECTION_VARIANCE[month] + cumulativeAdjustments;
     const variance = actualEnding - projectedEnding;
@@ -99,7 +99,8 @@ export function buildTrueCashProjectionSchedule({
       type: "projection-history",
     };
   });
-  let projectedValue = parseMoney(chart.values[chart.values.length - 1] || chart.value);
+  let projectedValue =
+    parseMoney(chart.values[chart.values.length - 1] || chart.value) + cumulativeAdjustments;
   const currentAndFutureMonths = budgetMonths.slice(openMonthIndex).map((month) => {
     const activeStreams = incomeStreams.filter((stream) =>
       (stream.months || budgetMonths).includes(month)
@@ -109,7 +110,7 @@ export function buildTrueCashProjectionSchedule({
       .filter((category) => (category.months || budgetMonths).includes(month))
       .reduce((sum, category) => sum + Number(category.budget || 0), 0);
     const profit = income - budget;
-    const adjustment = Number(projectionAdjustments[month] || 0);
+    const adjustment = parseMoney(projectionAdjustments[month]);
     projectedValue += profit + adjustment;
 
     return {

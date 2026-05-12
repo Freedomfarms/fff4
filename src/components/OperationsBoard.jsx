@@ -7,6 +7,10 @@ import {
   buildTrueCashProjectionSchedule,
 } from "../utils/trueCashProjection.js";
 
+function formatAdjustmentValue(value) {
+  return String(Math.round(Number(value) || 0));
+}
+
 export function OperationsBoard({
   budgetRows,
   incomeStreams,
@@ -109,7 +113,7 @@ export function OperationsBoard({
     budgetRows,
     projectionAdjustments,
   });
-  const adjustmentValues = budgetMonths.map((month) => Number(projectionAdjustments[month] || 0));
+  const adjustmentValues = budgetMonths.map((month) => parseMoney(projectionAdjustments[month]));
   const projectedTrueCashValues = budgetMonths.map(
     (month) => trueCashProjectionSchedule.find((point) => point.month === month)?.value || 0
   );
@@ -675,9 +679,11 @@ export function OperationsBoard({
                       <span style={{ color: "#8fb1d9" }}>{label}</span>
                       <span style={{ color }}>
                         {(label === "Profit" || label === "Adjustments") && value >= 0 ? "+" : ""}
-                        {label === "Projected Cash" || label === "Adjustments"
-                          ? wholeDollars(value)
-                          : money(value)}
+                        {label === "Adjustments"
+                          ? formatAdjustmentValue(value)
+                          : label === "Projected Cash"
+                            ? wholeDollars(value)
+                            : money(value)}
                       </span>
                     </div>
                   ))}
@@ -897,9 +903,14 @@ export function OperationsBoard({
               {budgetMonths.map((month, index) => (
                 <input
                   key={month}
-                  value={wholeDollars(adjustmentValues[index])}
+                  value={
+                    projectionAdjustments[month] === undefined
+                      ? "0"
+                      : String(projectionAdjustments[month])
+                  }
                   onChange={(event) => {
-                    const nextValue = parseMoney(event.target.value);
+                    const nextValue = event.target.value.replace(/[^\d-]/g, "");
+                    if (!/^-?\d*$/.test(nextValue)) return;
                     setProjectionAdjustments((current) => ({
                       ...current,
                       [month]: nextValue,
@@ -936,8 +947,7 @@ export function OperationsBoard({
                   fontWeight: 950,
                 }}
               >
-                {adjustmentValues.reduce((sum, value) => sum + value, 0) >= 0 ? "+" : ""}
-                {wholeDollars(adjustmentValues.reduce((sum, value) => sum + value, 0))}
+                {formatAdjustmentValue(adjustmentValues.reduce((sum, value) => sum + value, 0))}
               </div>
             </div>
 
