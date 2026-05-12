@@ -3,6 +3,18 @@ import { styles } from "../styles.js";
 import { money, cleanMoneyInput } from "../utils/format.js";
 import { budgetMonths, budgetMonthNames } from "../data/constants.jsx";
 
+const monthNameToBudgetMonth = Object.fromEntries(
+  budgetMonths.map((month) => [budgetMonthNames[month], month])
+);
+
+function isTransactionInBudgetMonth(transaction, month, year) {
+  const match = /^([A-Za-z]+)\s+\d{1,2},\s+(\d{4})$/.exec(transaction.date);
+  if (!match) return false;
+
+  const [, monthName, transactionYear] = match;
+  return monthNameToBudgetMonth[monthName] === month && Number(transactionYear) === year;
+}
+
 export function BudgetCommandCenter({ transactions, budgetRows, setBudgetRows }) {
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [activeBudgetDate, setActiveBudgetDate] = useState({ monthIndex: 4, year: 2026 });
@@ -20,13 +32,16 @@ export function BudgetCommandCenter({ transactions, budgetRows, setBudgetRows })
   const matchedBudgetCategories = budgetRows
     .filter((row) => row.name !== "Other")
     .flatMap((row) => row.transactionCategories);
+  const activeMonthTransactions = transactions.filter((tx) =>
+    isTransactionInBudgetMonth(tx, activeBudgetMonth, activeBudgetDate.year)
+  );
 
   const budgetRowsWithSpend = budgetRows
     .filter((row) => (row.months || budgetMonths).includes(activeBudgetMonth))
     .map((row) => ({
       ...row,
       months: row.months || budgetMonths,
-      spent: transactions
+      spent: activeMonthTransactions
         .filter((tx) => {
           if (tx.amount >= 0) return false;
           if (row.name === "Other") return !matchedBudgetCategories.includes(tx.category);

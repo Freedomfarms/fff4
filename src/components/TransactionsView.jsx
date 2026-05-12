@@ -4,7 +4,6 @@ import { money } from "../utils/format.js";
 
 export function TransactionsView({
   accounts,
-  transactions,
   selectedAccount,
   visibleTransactions,
   setActiveTab,
@@ -12,10 +11,10 @@ export function TransactionsView({
   connectMockPlaidAccount,
   updateTransactionCategory,
 }) {
-  const monthlySpend = transactions
+  const monthlySpend = visibleTransactions
     .filter((tx) => tx.amount < 0)
     .reduce((sum, tx) => sum + Math.abs(tx.amount), 0);
-  const cashInflow = transactions
+  const cashInflow = visibleTransactions
     .filter((tx) => tx.amount > 0)
     .reduce((sum, tx) => sum + tx.amount, 0);
 
