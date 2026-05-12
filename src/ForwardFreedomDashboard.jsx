@@ -22,6 +22,7 @@ function ForwardFreedomDashboard() {
   const [selectedAccount, setSelectedAccount] = useState(null);
   const [budgetRows, setBudgetRows] = useState(initialBudgetCategories);
   const [incomeStreams, setIncomeStreams] = useState(incomeStreamSeed);
+  const [projectionAdjustments, setProjectionAdjustments] = useState({});
   const [activeTab, setActiveTab] = useState("Dashboard");
   const [activeRange, setActiveRange] = useState("ALL");
 
@@ -275,6 +276,7 @@ function ForwardFreedomDashboard() {
               trueCash={trueCash}
               incomeStreams={incomeStreams}
               budgetRows={budgetRows}
+              projectionAdjustments={projectionAdjustments}
               dynamicMetrics={dynamicMetrics}
               dynamicAllocations={dynamicAllocations}
               dynamicBreakdown={dynamicBreakdown}
@@ -291,6 +293,8 @@ function ForwardFreedomDashboard() {
               incomeStreams={incomeStreams}
               setIncomeStreams={setIncomeStreams}
               trueCash={trueCash}
+              projectionAdjustments={projectionAdjustments}
+              setProjectionAdjustments={setProjectionAdjustments}
             />
           ) : activeTab === "Add Accounts" ? (
             <AccountsView

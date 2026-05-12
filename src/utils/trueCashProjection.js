@@ -1,5 +1,5 @@
 import { budgetMonthNames, budgetMonths } from "../data/constants.jsx";
-import { money, parseMoney } from "./format.js";
+import { money, parseMoney, wholeDollars } from "./format.js";
 
 const FALLBACK_OPEN_MONTH = "May";
 const FALLBACK_OPEN_YEAR = 2026;
@@ -67,17 +67,25 @@ function getMonthEndActuals(chart) {
   }, {});
 }
 
-export function buildTrueCashProjectionSchedule({ chart, incomeStreams, budgetRows }) {
+export function buildTrueCashProjectionSchedule({
+  chart,
+  incomeStreams,
+  budgetRows,
+  projectionAdjustments = {},
+}) {
   if (!chart.supportsProjection) return [];
 
   const { month: openMonth, year: openYear } = parseChartDate(chart.date);
   const openMonthIndex = Math.max(0, budgetMonths.indexOf(openMonth));
   const monthEndActuals = getMonthEndActuals(chart);
+  let cumulativeAdjustments = 0;
   const lockedMonths = budgetMonths.slice(0, openMonthIndex).map((month) => {
     const actualEnding = monthEndActuals[`${openYear}-${month}`];
     if (actualEnding === undefined) return null;
 
-    const projectedEnding = actualEnding + LOCKED_PROJECTION_VARIANCE[month];
+    cumulativeAdjustments += Number(projectionAdjustments[month] || 0);
+    const projectedEnding =
+      actualEnding + LOCKED_PROJECTION_VARIANCE[month] + cumulativeAdjustments;
     const variance = actualEnding - projectedEnding;
 
     return {
@@ -85,8 +93,8 @@ export function buildTrueCashProjectionSchedule({ chart, incomeStreams, budgetRo
       year: openYear,
       date: `${month} ${openYear} Locked Projection`,
       value: projectedEnding,
-      formattedValue: money(projectedEnding),
-      actualValue: money(actualEnding),
+      formattedValue: wholeDollars(projectedEnding),
+      actualValue: wholeDollars(actualEnding),
       variance,
       type: "projection-history",
     };
@@ -101,15 +109,17 @@ export function buildTrueCashProjectionSchedule({ chart, incomeStreams, budgetRo
       .filter((category) => (category.months || budgetMonths).includes(month))
       .reduce((sum, category) => sum + Number(category.budget || 0), 0);
     const profit = income - budget;
-    projectedValue += profit;
+    const adjustment = Number(projectionAdjustments[month] || 0);
+    projectedValue += profit + adjustment;
 
     return {
       month,
       year: openYear,
       date: `${month} ${openYear} Projection`,
       value: projectedValue,
-      formattedValue: money(projectedValue),
+      formattedValue: wholeDollars(projectedValue),
       profit,
+      adjustment,
       type: "projected",
     };
   });

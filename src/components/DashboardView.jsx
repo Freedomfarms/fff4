@@ -1,14 +1,13 @@
 import { useState } from "react";
-import { chartSets, yAxis } from "../data/constants.jsx";
+import { chartSets } from "../data/constants.jsx";
 import { styles } from "../styles.js";
-import { buildAreaPath, buildLinePath, money } from "../utils/format.js";
+import { buildAreaPath, buildLinePath, money, parseMoney, wholeDollars } from "../utils/format.js";
 import {
   buildSyncedTrueCashChart,
   buildTrueCashProjectionSchedule,
 } from "../utils/trueCashProjection.js";
 import { InfoDot, MetricCard } from "./Common.jsx";
 
-const TRUE_CASH_CHART_MAX = 100000;
 const CHART_HEIGHT = 300;
 const MONTH_END_X = {
   Jan: 80,
@@ -25,11 +24,21 @@ const MONTH_END_X = {
   Dec: 972,
 };
 
-function trueCashToChartY(value) {
-  return Math.max(
-    0,
-    Math.min(CHART_HEIGHT, CHART_HEIGHT - (value / TRUE_CASH_CHART_MAX) * CHART_HEIGHT)
-  );
+function trueCashToChartY(value, chartMax) {
+  return Math.max(0, Math.min(CHART_HEIGHT, CHART_HEIGHT - (value / chartMax) * CHART_HEIGHT));
+}
+
+function buildChartMax(values) {
+  const highestValue = Math.max(...values.map((value) => Number(value) || 0), 1);
+  return Math.ceil((highestValue * 1.4) / 1000) * 1000;
+}
+
+function buildYAxisLabels(chartMax) {
+  return Array.from({ length: 6 }, (_, index) => {
+    const value = chartMax - (chartMax / 5) * index;
+    if (value >= 1000) return `$${Math.round(value / 1000)}K`;
+    return wholeDollars(value);
+  });
 }
 
 function buildProjectionAreaPath(points) {
@@ -47,25 +56,39 @@ export function DashboardView({
   trueCash,
   incomeStreams,
   budgetRows,
+  projectionAdjustments,
   dynamicMetrics,
   dynamicAllocations,
   dynamicBreakdown,
 }) {
   const [hoverState, setHoverState] = useState(null);
-  const chart = buildSyncedTrueCashChart(chartSets[activeRange], trueCash, trueCashToChartY);
-  const linePath = buildLinePath(chart.points);
-  const areaPath = buildAreaPath(chart.points);
+  const chartValues = buildSyncedTrueCashChart(chartSets[activeRange], trueCash);
   const projectionSchedule = buildTrueCashProjectionSchedule({
-    chart,
+    chart: chartValues,
     incomeStreams,
     budgetRows,
+    projectionAdjustments,
   });
+  const chartMax = buildChartMax([
+    ...chartValues.values.map((value) => parseMoney(value)),
+    ...projectionSchedule.map((point) => point.value),
+  ]);
+  const yAxisLabels = buildYAxisLabels(chartMax);
+  const chart = {
+    ...chartValues,
+    points: chartValues.points.map((point, index) => [
+      point[0],
+      trueCashToChartY(parseMoney(chartValues.values[index]), chartMax),
+    ]),
+  };
+  const linePath = buildLinePath(chart.points);
+  const areaPath = buildAreaPath(chart.points);
   const lockedProjectionPoints = projectionSchedule
     .filter((point) => point.type === "projection-history" && MONTH_END_X[point.month])
     .map((point) => ({
       ...point,
       x: MONTH_END_X[point.month],
-      y: trueCashToChartY(point.value),
+      y: trueCashToChartY(point.value, chartMax),
       value: point.formattedValue,
     }));
   const projectedTrueCashPoints = projectionSchedule
@@ -73,7 +96,7 @@ export function DashboardView({
     .map((point) => ({
       ...point,
       x: MONTH_END_X[point.month],
-      y: trueCashToChartY(point.value),
+      y: trueCashToChartY(point.value, chartMax),
       value: point.formattedValue,
     }));
   const lockedProjectionPath =
@@ -289,12 +312,12 @@ export function DashboardView({
         </div>
 
         <div style={{ position: "relative", height: 330, paddingLeft: 56, width: "100%" }}>
-          {yAxis.map((label, index) => (
+          {yAxisLabels.map((label, index) => (
             <div
               key={label}
               style={{
                 position: "absolute",
-                top: (index / Math.max(yAxis.length - 1, 1)) * CHART_HEIGHT,
+                top: (index / Math.max(yAxisLabels.length - 1, 1)) * CHART_HEIGHT,
                 left: 0,
                 right: 0,
                 display: "flex",

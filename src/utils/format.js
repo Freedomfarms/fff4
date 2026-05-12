@@ -13,6 +13,12 @@ export function money(value) {
   return "$" + number.toLocaleString("en-US");
 }
 
+export function wholeDollars(value) {
+  const number = Math.round(Number(value) || 0);
+  const prefix = number < 0 ? "-" : "";
+  return `${prefix}$${Math.abs(number).toLocaleString("en-US")}`;
+}
+
 export function parseMoney(value) {
   return Number(String(value).replace(/[^0-9.-]/g, "")) || 0;
 }

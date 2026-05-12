@@ -1,13 +1,20 @@
 import { useState } from "react";
 import { styles } from "../styles.js";
-import { money, parseMoney } from "../utils/format.js";
+import { money, parseMoney, wholeDollars } from "../utils/format.js";
 import { budgetMonths, chartSets, yearlyOpsData } from "../data/constants.jsx";
 import {
   buildSyncedTrueCashChart,
   buildTrueCashProjectionSchedule,
 } from "../utils/trueCashProjection.js";
 
-export function OperationsBoard({ budgetRows, incomeStreams, setIncomeStreams, trueCash }) {
+export function OperationsBoard({
+  budgetRows,
+  incomeStreams,
+  setIncomeStreams,
+  trueCash,
+  projectionAdjustments,
+  setProjectionAdjustments,
+}) {
   const [incomeDeleteTarget, setIncomeDeleteTarget] = useState(null);
   const [otherValue, setOtherValue] = useState(0);
   const [startingSpotDate, setStartingSpotDate] = useState("2026-01-01");
@@ -100,7 +107,9 @@ export function OperationsBoard({ budgetRows, incomeStreams, setIncomeStreams, t
     chart: buildSyncedTrueCashChart(chartSets.ALL, trueCash),
     incomeStreams,
     budgetRows,
+    projectionAdjustments,
   });
+  const adjustmentValues = budgetMonths.map((month) => Number(projectionAdjustments[month] || 0));
   const projectedTrueCashValues = budgetMonths.map(
     (month) => trueCashProjectionSchedule.find((point) => point.month === month)?.value || 0
   );
@@ -641,6 +650,11 @@ export function OperationsBoard({ budgetRows, incomeStreams, setIncomeStreams, t
                         : "#ff5d7a",
                     ],
                     [
+                      "Adjustments",
+                      adjustmentValues[hoveredCommandMonth.index],
+                      adjustmentValues[hoveredCommandMonth.index] >= 0 ? "#ffb347" : "#ff7a45",
+                    ],
+                    [
                       "Projected Cash",
                       projectedTrueCashValues[hoveredCommandMonth.index],
                       "#ff9f1c",
@@ -660,8 +674,10 @@ export function OperationsBoard({ budgetRows, incomeStreams, setIncomeStreams, t
                     >
                       <span style={{ color: "#8fb1d9" }}>{label}</span>
                       <span style={{ color }}>
-                        {label === "Profit" && value >= 0 ? "+" : ""}
-                        {money(value)}
+                        {(label === "Profit" || label === "Adjustments") && value >= 0 ? "+" : ""}
+                        {label === "Projected Cash" || label === "Adjustments"
+                          ? wholeDollars(value)
+                          : money(value)}
                       </span>
                     </div>
                   ))}
@@ -871,6 +887,64 @@ export function OperationsBoard({ budgetRows, incomeStreams, setIncomeStreams, t
               style={{
                 display: "grid",
                 gridTemplateColumns: "120px repeat(12, 1fr) 120px",
+                padding: "14px 16px",
+                alignItems: "center",
+                borderTop: "1px solid rgba(255,159,28,.16)",
+                background: "rgba(255,159,28,.04)",
+              }}
+            >
+              <div style={{ color: "#ffb347", fontSize: 17, fontWeight: 950 }}>Adjustments</div>
+              {budgetMonths.map((month, index) => (
+                <input
+                  key={month}
+                  value={wholeDollars(adjustmentValues[index])}
+                  onChange={(event) => {
+                    const nextValue = parseMoney(event.target.value);
+                    setProjectionAdjustments((current) => ({
+                      ...current,
+                      [month]: nextValue,
+                    }));
+                  }}
+                  style={{
+                    color: adjustmentValues[index] >= 0 ? "#ffd08a" : "#ff9a76",
+                    textAlign: "right",
+                    fontSize: 14,
+                    fontWeight: 900,
+                    background: "transparent",
+                    border: "1px solid transparent",
+                    borderRadius: 7,
+                    padding: "6px 4px",
+                    outline: "none",
+                    width: "100%",
+                    boxSizing: "border-box",
+                  }}
+                  onFocus={(event) => {
+                    event.currentTarget.style.border = "1px solid rgba(255,159,28,.45)";
+                    event.currentTarget.style.background = "rgba(255,159,28,.08)";
+                  }}
+                  onBlur={(event) => {
+                    event.currentTarget.style.border = "1px solid transparent";
+                    event.currentTarget.style.background = "transparent";
+                  }}
+                />
+              ))}
+              <div
+                style={{
+                  color: "#ffb347",
+                  textAlign: "right",
+                  fontSize: 15,
+                  fontWeight: 950,
+                }}
+              >
+                {adjustmentValues.reduce((sum, value) => sum + value, 0) >= 0 ? "+" : ""}
+                {wholeDollars(adjustmentValues.reduce((sum, value) => sum + value, 0))}
+              </div>
+            </div>
+
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "120px repeat(12, 1fr) 120px",
                 padding: "16px",
                 alignItems: "center",
                 background: "linear-gradient(90deg, rgba(255,159,28,.16), rgba(255,159,28,.05))",
@@ -892,7 +966,7 @@ export function OperationsBoard({ budgetRows, incomeStreams, setIncomeStreams, t
                     textShadow: "0 0 10px rgba(255,159,28,.32)",
                   }}
                 >
-                  {money(value)}
+                  {wholeDollars(value)}
                 </div>
               ))}
               <div
@@ -904,7 +978,7 @@ export function OperationsBoard({ budgetRows, incomeStreams, setIncomeStreams, t
                   textShadow: "0 0 14px rgba(255,159,28,.38)",
                 }}
               >
-                {money(projectedYearEndTrueCash)}
+                {wholeDollars(projectedYearEndTrueCash)}
               </div>
             </div>
           </div>
