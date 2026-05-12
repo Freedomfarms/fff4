@@ -20,7 +20,10 @@ function ForwardFreedomDashboard() {
   const [activeRange, setActiveRange] = useState("ALL");
 
   const liquidCash = accounts
-    .filter((account) => account.type === "Checking" || account.type === "Savings")
+    .filter(
+      (account) =>
+        account.type === "Checking" || account.type === "Savings" || account.type === "Manual Cash"
+    )
     .reduce((sum, account) => sum + account.balance, 0);
 
   const creditCardDebt = Math.abs(
