@@ -18,6 +18,34 @@ const MONTH_END_X = {
   Dec: 972,
 };
 
+function trueCashToChartY(value) {
+  return Math.max(
+    0,
+    Math.min(CHART_HEIGHT, CHART_HEIGHT - (value / TRUE_CASH_CHART_MAX) * CHART_HEIGHT)
+  );
+}
+
+function buildCurrentTrueCashChart(baseChart, trueCash) {
+  const numericValues = baseChart.values.map((value) => parseMoney(value));
+  const lastMockValue = numericValues[numericValues.length - 1] || trueCash;
+  const offset = trueCash - lastMockValue;
+  const adjustedValues = numericValues.map((value) => value + offset);
+  const firstValue = adjustedValues[0] || trueCash;
+  const change = trueCash - firstValue;
+  const percentChange = firstValue ? (change / firstValue) * 100 : 0;
+
+  return {
+    ...baseChart,
+    value: money(trueCash),
+    change: `${change >= 0 ? "+" : "-"}${money(Math.abs(change))} (${percentChange.toFixed(2)}%)`,
+    points: baseChart.points.map((point, index) => [
+      point[0],
+      trueCashToChartY(adjustedValues[index] ?? trueCash),
+    ]),
+    values: adjustedValues.map((value) => money(value)),
+  };
+}
+
 function buildProjectionAreaPath(points) {
   const firstPoint = points[0];
   const lastPoint = points[points.length - 1];
@@ -30,7 +58,6 @@ function buildProjectionAreaPath(points) {
 function buildProjectedTrueCashPoints({ chart, incomeStreams, budgetRows }) {
   if (!chart.supportsProjection) return [];
 
-  const actualEndPoint = chart.points[chart.points.length - 1];
   const actualEndValue = parseMoney(chart.values[chart.values.length - 1] || chart.value);
   const currentMonthIndex = budgetMonths.indexOf(CURRENT_OPEN_MONTH);
   const projectionMonths = budgetMonths
@@ -49,11 +76,9 @@ function buildProjectedTrueCashPoints({ chart, incomeStreams, budgetRows }) {
     const profit = income - budget;
     projectedValue += profit;
 
-    const yOffset = ((projectedValue - actualEndValue) / TRUE_CASH_CHART_MAX) * CHART_HEIGHT;
-
     return {
       x: MONTH_END_X[month],
-      y: Math.max(0, Math.min(CHART_HEIGHT, actualEndPoint[1] - yOffset)),
+      y: trueCashToChartY(projectedValue),
       date: `${month} 2026 Projection`,
       value: money(projectedValue),
       profit,
@@ -73,7 +98,7 @@ export function DashboardView({
   dynamicBreakdown,
 }) {
   const [hoverState, setHoverState] = useState(null);
-  const chart = chartSets[activeRange];
+  const chart = buildCurrentTrueCashChart(chartSets[activeRange], trueCash);
   const linePath = buildLinePath(chart.points);
   const areaPath = buildAreaPath(chart.points);
   const projectedTrueCashPoints = buildProjectedTrueCashPoints({
