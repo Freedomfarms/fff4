@@ -1,9 +1,13 @@
 import { useState } from "react";
 import { styles } from "../styles.js";
 import { money, parseMoney } from "../utils/format.js";
-import { budgetMonths, yearlyOpsData } from "../data/constants.jsx";
+import { budgetMonths, chartSets, yearlyOpsData } from "../data/constants.jsx";
+import {
+  buildSyncedTrueCashChart,
+  buildTrueCashProjectionSchedule,
+} from "../utils/trueCashProjection.js";
 
-export function OperationsBoard({ budgetRows, incomeStreams, setIncomeStreams }) {
+export function OperationsBoard({ budgetRows, incomeStreams, setIncomeStreams, trueCash }) {
   const [incomeDeleteTarget, setIncomeDeleteTarget] = useState(null);
   const [otherValue, setOtherValue] = useState(0);
   const [startingSpotDate, setStartingSpotDate] = useState("2026-01-01");
@@ -92,6 +96,16 @@ export function OperationsBoard({ budgetRows, incomeStreams, setIncomeStreams })
       total: monthlyValues.reduce((sum, value) => sum + value, 0),
     };
   });
+  const trueCashProjectionSchedule = buildTrueCashProjectionSchedule({
+    chart: buildSyncedTrueCashChart(chartSets.ALL, trueCash),
+    incomeStreams,
+    budgetRows,
+  });
+  const projectedTrueCashValues = budgetMonths.map(
+    (month) => trueCashProjectionSchedule.find((point) => point.month === month)?.value || 0
+  );
+  const projectedYearEndTrueCash =
+    projectedTrueCashValues[projectedTrueCashValues.length - 1] || trueCash;
 
   return (
     <div>
@@ -626,6 +640,11 @@ export function OperationsBoard({ budgetRows, incomeStreams, setIncomeStreams })
                         ? "#00f59b"
                         : "#ff5d7a",
                     ],
+                    [
+                      "Projected Cash",
+                      projectedTrueCashValues[hoveredCommandMonth.index],
+                      "#ff9f1c",
+                    ],
                   ].map(([label, value, color]) => (
                     <div
                       key={label}
@@ -845,6 +864,47 @@ export function OperationsBoard({ budgetRows, incomeStreams, setIncomeStreams })
               >
                 {yearlySurplus >= 0 ? "+" : ""}
                 {money(yearlySurplus)}
+              </div>
+            </div>
+
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "120px repeat(12, 1fr) 120px",
+                padding: "16px",
+                alignItems: "center",
+                background: "linear-gradient(90deg, rgba(255,159,28,.16), rgba(255,159,28,.05))",
+                borderTop: "1px solid rgba(255,159,28,.22)",
+                boxShadow: "inset 0 0 22px rgba(255,159,28,.07)",
+              }}
+            >
+              <div style={{ color: "#ffb347", fontSize: 17, fontWeight: 950 }}>
+                Projected True Cash
+              </div>
+              {projectedTrueCashValues.map((value, index) => (
+                <div
+                  key={budgetMonths[index]}
+                  style={{
+                    color: "#ffd08a",
+                    textAlign: "right",
+                    fontSize: 14,
+                    fontWeight: 900,
+                    textShadow: "0 0 10px rgba(255,159,28,.32)",
+                  }}
+                >
+                  {money(value)}
+                </div>
+              ))}
+              <div
+                style={{
+                  color: "#ff9f1c",
+                  textAlign: "right",
+                  fontSize: 15,
+                  fontWeight: 950,
+                  textShadow: "0 0 14px rgba(255,159,28,.38)",
+                }}
+              >
+                {money(projectedYearEndTrueCash)}
               </div>
             </div>
           </div>

@@ -1,11 +1,13 @@
 import { useState } from "react";
-import { budgetMonthNames, budgetMonths, chartSets, yAxis } from "../data/constants.jsx";
+import { chartSets, yAxis } from "../data/constants.jsx";
 import { styles } from "../styles.js";
-import { buildAreaPath, buildLinePath, money, parseMoney } from "../utils/format.js";
+import { buildAreaPath, buildLinePath, money } from "../utils/format.js";
+import {
+  buildSyncedTrueCashChart,
+  buildTrueCashProjectionSchedule,
+} from "../utils/trueCashProjection.js";
 import { InfoDot, MetricCard } from "./Common.jsx";
 
-const FALLBACK_OPEN_MONTH = "May";
-const FALLBACK_OPEN_YEAR = 2026;
 const TRUE_CASH_CHART_MAX = 100000;
 const CHART_HEIGHT = 300;
 const MONTH_END_X = {
@@ -22,64 +24,12 @@ const MONTH_END_X = {
   Nov: 889,
   Dec: 972,
 };
-const LOCKED_PROJECTION_VARIANCE = {
-  Jan: 850,
-  Feb: 1400,
-  Mar: 300,
-  Apr: 2380,
-  May: -520,
-  Jun: 760,
-  Jul: -430,
-  Aug: 1180,
-  Sep: 620,
-  Oct: -900,
-  Nov: 540,
-  Dec: 1250,
-};
-
-const monthNameToBudgetMonth = Object.fromEntries(
-  budgetMonths.map((month) => [budgetMonthNames[month], month])
-);
 
 function trueCashToChartY(value) {
   return Math.max(
     0,
     Math.min(CHART_HEIGHT, CHART_HEIGHT - (value / TRUE_CASH_CHART_MAX) * CHART_HEIGHT)
   );
-}
-
-function buildCurrentTrueCashChart(baseChart, trueCash) {
-  const numericValues = baseChart.values.map((value) => parseMoney(value));
-  const lastMockValue = numericValues[numericValues.length - 1] || trueCash;
-  const offset = trueCash - lastMockValue;
-  const adjustedValues = numericValues.map((value) => value + offset);
-  const firstValue = adjustedValues[0] || trueCash;
-  const change = trueCash - firstValue;
-  const percentChange = firstValue ? (change / firstValue) * 100 : 0;
-
-  return {
-    ...baseChart,
-    value: money(trueCash),
-    change: `${change >= 0 ? "+" : "-"}${money(Math.abs(change))} (${percentChange.toFixed(2)}%)`,
-    points: baseChart.points.map((point, index) => [
-      point[0],
-      trueCashToChartY(adjustedValues[index] ?? trueCash),
-    ]),
-    values: adjustedValues.map((value) => money(value)),
-  };
-}
-
-function parseChartDate(date) {
-  const match = /^([A-Za-z]+)\s+\d{1,2},\s+(\d{4})$/.exec(date || "");
-  if (!match) {
-    return { month: FALLBACK_OPEN_MONTH, year: FALLBACK_OPEN_YEAR };
-  }
-
-  const [, monthName, year] = match;
-  return {
-    month: monthNameToBudgetMonth[monthName] || FALLBACK_OPEN_MONTH,
-    year: Number(year) || FALLBACK_OPEN_YEAR,
-  };
 }
 
 function buildProjectionAreaPath(points) {
@@ -89,75 +39,6 @@ function buildProjectionAreaPath(points) {
     buildLinePath(points) +
     ` L ${lastPoint[0]} ${CHART_HEIGHT} L ${firstPoint[0]} ${CHART_HEIGHT} Z`
   );
-}
-
-function getMonthEndActuals(chart) {
-  return chart.dates.reduce((actuals, date, index) => {
-    const { month, year } = parseChartDate(date);
-    actuals[`${year}-${month}`] = parseMoney(chart.values[index]);
-    return actuals;
-  }, {});
-}
-
-function buildLockedProjectionPoints({ chart, openMonth, openYear }) {
-  if (!chart.supportsProjection) return [];
-
-  const openMonthIndex = budgetMonths.indexOf(openMonth);
-  const monthEndActuals = getMonthEndActuals(chart);
-
-  return budgetMonths
-    .slice(0, openMonthIndex)
-    .map((month) => {
-      const actualEnding = monthEndActuals[`${openYear}-${month}`];
-      if (actualEnding === undefined || !MONTH_END_X[month]) return null;
-
-      const projectedEnding = actualEnding + LOCKED_PROJECTION_VARIANCE[month];
-      const variance = actualEnding - projectedEnding;
-
-      return {
-        x: MONTH_END_X[month],
-        y: trueCashToChartY(projectedEnding),
-        date: `${month} ${openYear} Locked Projection`,
-        value: money(projectedEnding),
-        actualValue: money(actualEnding),
-        variance,
-        type: "projection-history",
-      };
-    })
-    .filter(Boolean);
-}
-
-function buildProjectedTrueCashPoints({ chart, incomeStreams, budgetRows }) {
-  if (!chart.supportsProjection) return [];
-
-  const actualEndValue = parseMoney(chart.values[chart.values.length - 1] || chart.value);
-  const { month: openMonth, year: openYear } = parseChartDate(chart.date);
-  const currentMonthIndex = budgetMonths.indexOf(openMonth);
-  const projectionMonths = budgetMonths
-    .slice(currentMonthIndex)
-    .filter((month) => MONTH_END_X[month]);
-  let projectedValue = actualEndValue;
-
-  return projectionMonths.map((month) => {
-    const activeStreams = incomeStreams.filter((stream) =>
-      (stream.months || budgetMonths).includes(month)
-    );
-    const income = activeStreams.reduce((sum, stream) => sum + parseMoney(stream.amount), 0);
-    const budget = budgetRows
-      .filter((category) => (category.months || budgetMonths).includes(month))
-      .reduce((sum, category) => sum + Number(category.budget || 0), 0);
-    const profit = income - budget;
-    projectedValue += profit;
-
-    return {
-      x: MONTH_END_X[month],
-      y: trueCashToChartY(projectedValue),
-      date: `${month} ${openYear} Projection`,
-      value: money(projectedValue),
-      profit,
-      type: "projected",
-    };
-  });
 }
 
 export function DashboardView({
@@ -171,20 +52,30 @@ export function DashboardView({
   dynamicBreakdown,
 }) {
   const [hoverState, setHoverState] = useState(null);
-  const chart = buildCurrentTrueCashChart(chartSets[activeRange], trueCash);
-  const { month: openMonth, year: openYear } = parseChartDate(chart.date);
+  const chart = buildSyncedTrueCashChart(chartSets[activeRange], trueCash, trueCashToChartY);
   const linePath = buildLinePath(chart.points);
   const areaPath = buildAreaPath(chart.points);
-  const lockedProjectionPoints = buildLockedProjectionPoints({
-    chart,
-    openMonth,
-    openYear,
-  });
-  const projectedTrueCashPoints = buildProjectedTrueCashPoints({
+  const projectionSchedule = buildTrueCashProjectionSchedule({
     chart,
     incomeStreams,
     budgetRows,
   });
+  const lockedProjectionPoints = projectionSchedule
+    .filter((point) => point.type === "projection-history" && MONTH_END_X[point.month])
+    .map((point) => ({
+      ...point,
+      x: MONTH_END_X[point.month],
+      y: trueCashToChartY(point.value),
+      value: point.formattedValue,
+    }));
+  const projectedTrueCashPoints = projectionSchedule
+    .filter((point) => point.type === "projected" && MONTH_END_X[point.month])
+    .map((point) => ({
+      ...point,
+      x: MONTH_END_X[point.month],
+      y: trueCashToChartY(point.value),
+      value: point.formattedValue,
+    }));
   const lockedProjectionPath =
     lockedProjectionPoints.length > 1
       ? buildLinePath(lockedProjectionPoints.map((point) => [point.x, point.y]))
@@ -477,8 +368,7 @@ export function DashboardView({
                     d={lockedProjectionPath}
                     fill="none"
                     stroke="#ff9f1c"
-                    strokeWidth="2"
-                    opacity="0.46"
+                    strokeWidth="3"
                     filter="url(#projectedTrueCashGlow)"
                   />
                 ) : null}
@@ -488,8 +378,7 @@ export function DashboardView({
                     cx={point.x}
                     cy={point.y}
                     r="4"
-                    fill="#ff9f1c"
-                    opacity="0.68"
+                    fill="#ffd08a"
                     filter="url(#projectedTrueCashGlow)"
                   />
                 ))}
@@ -716,9 +605,8 @@ export function DashboardView({
                       height: 10,
                       borderRadius: 99,
                       background: "#ff9f1c",
-                      boxShadow: "0 0 10px rgba(255,159,28,.55)",
+                      boxShadow: "0 0 10px rgba(255,159,28,.8)",
                       marginRight: 8,
-                      opacity: 0.58,
                     }}
                   />
                   Locked Projection

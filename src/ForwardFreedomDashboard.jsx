@@ -290,6 +290,7 @@ function ForwardFreedomDashboard() {
               budgetRows={budgetRows}
               incomeStreams={incomeStreams}
               setIncomeStreams={setIncomeStreams}
+              trueCash={trueCash}
             />
           ) : activeTab === "Add Accounts" ? (
             <AccountsView
