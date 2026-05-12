@@ -21,20 +21,13 @@ export function InfoDot() {
 }
 
 export function SideItem({ item, activeTab, setActiveTab }) {
-  const activeStyle =
-    activeTab === item.label
-      ? {
-          background: "linear-gradient(90deg, rgba(0,104,255,.75), rgba(4,42,112,.72))",
-          color: "white",
-          boxShadow: "0 0 30px rgba(0,120,255,.28)",
-        }
-      : { color: "#c9d8ee" };
+  const isActive = activeTab === item.label;
 
   return (
     <button
+      className={`sidebar-nav-button${isActive ? " sidebar-nav-button--active" : ""}`}
       onClick={() => setActiveTab(item.label)}
       style={{
-        ...activeStyle,
         display: "flex",
         alignItems: "center",
         gap: 12,
@@ -44,12 +37,11 @@ export function SideItem({ item, activeTab, setActiveTab }) {
         marginBottom: 8,
         width: "100%",
         border: "none",
-        backgroundColor: "transparent",
         cursor: "pointer",
         textAlign: "left",
       }}
     >
-      <span style={{ width: 18, color: item.active ? "#23d7ff" : "#c9d8ee", fontSize: 18 }}>
+      <span style={{ width: 18, color: isActive ? "#23d7ff" : "#c9d8ee", fontSize: 18 }}>
         {item.icon}
       </span>
       <span>{item.label}</span>

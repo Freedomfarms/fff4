@@ -26,5 +26,31 @@ textarea {
   font-family: inherit;
 }
 button {
+  appearance: none;
+  -webkit-appearance: none;
+  background: transparent;
+  color: inherit;
   user-select: none;
+}
+
+.sidebar-nav-button {
+  background: transparent;
+  color: #c9d8ee;
+  outline: none;
+}
+
+.sidebar-nav-button:hover,
+.sidebar-nav-button:focus,
+.sidebar-nav-button:active {
+  background: rgba(0, 136, 255, 0.1);
+  color: #eaf3ff;
+}
+
+.sidebar-nav-button--active,
+.sidebar-nav-button--active:hover,
+.sidebar-nav-button--active:focus,
+.sidebar-nav-button--active:active {
+  background: linear-gradient(90deg, rgba(0, 104, 255, 0.75), rgba(4, 42, 112, 0.72));
+  color: white;
+  box-shadow: 0 0 30px rgba(0, 120, 255, 0.28);
 }
