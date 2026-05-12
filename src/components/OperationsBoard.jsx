@@ -11,6 +11,7 @@ export function OperationsBoard({ budgetRows }) {
   );
   const [otherValue, setOtherValue] = useState(0);
   const [startingSpotDate, setStartingSpotDate] = useState("2025-01-01");
+  const [hoveredCommandMonth, setHoveredCommandMonth] = useState(null);
 
   const addIncomeStream = () => {
     setIncomeStreams((streams) => {
@@ -590,7 +591,9 @@ export function OperationsBoard({ budgetRows }) {
             </div>
 
             <div
+              onMouseLeave={() => setHoveredCommandMonth(null)}
               style={{
+                position: "relative",
                 height: 360,
                 display: "grid",
                 gridTemplateColumns: "repeat(12, 1fr)",
@@ -601,9 +604,74 @@ export function OperationsBoard({ budgetRows }) {
                 padding: "18px 8px 0",
               }}
             >
-              {dynamicYearlyOpsData.map((month) => (
+              {hoveredCommandMonth ? (
+                <div
+                  style={{
+                    position: "absolute",
+                    top: 14,
+                    left: `${Math.min(
+                      86,
+                      Math.max(14, ((hoveredCommandMonth.index + 0.5) / 12) * 100)
+                    )}%`,
+                    transform: "translateX(-50%)",
+                    zIndex: 5,
+                    minWidth: 190,
+                    border: "1px solid rgba(0,216,255,.55)",
+                    borderRadius: 12,
+                    background: "linear-gradient(180deg, rgba(5,23,45,.98), rgba(2,10,23,.96))",
+                    boxShadow: "0 0 28px rgba(0,136,255,.32), inset 0 0 18px rgba(0,216,255,.08)",
+                    padding: "12px 14px",
+                    pointerEvents: "none",
+                  }}
+                >
+                  <div
+                    style={{
+                      color: "#8feaff",
+                      fontSize: 12,
+                      textTransform: "uppercase",
+                      letterSpacing: 1,
+                      marginBottom: 9,
+                    }}
+                  >
+                    {hoveredCommandMonth.data.month} Values
+                  </div>
+                  {[
+                    ["Income", hoveredCommandMonth.data.income, "#00f59b"],
+                    ["Budget", hoveredCommandMonth.data.budget, "#00d8ff"],
+                    [
+                      "Profit",
+                      hoveredCommandMonth.data.income - hoveredCommandMonth.data.budget,
+                      hoveredCommandMonth.data.income - hoveredCommandMonth.data.budget >= 0
+                        ? "#00f59b"
+                        : "#ff5d7a",
+                    ],
+                  ].map(([label, value, color]) => (
+                    <div
+                      key={label}
+                      style={{
+                        display: "flex",
+                        justifyContent: "space-between",
+                        gap: 18,
+                        color: "#d7ecff",
+                        fontSize: 14,
+                        fontWeight: 800,
+                        marginTop: 6,
+                      }}
+                    >
+                      <span style={{ color: "#8fb1d9" }}>{label}</span>
+                      <span style={{ color }}>
+                        {label === "Profit" && value >= 0 ? "+" : ""}
+                        {money(value)}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              ) : null}
+
+              {dynamicYearlyOpsData.map((month, index) => (
                 <div
                   key={month.month}
+                  onMouseEnter={() => setHoveredCommandMonth({ data: month, index })}
                   style={{
                     height: "100%",
                     display: "flex",
@@ -611,6 +679,7 @@ export function OperationsBoard({ budgetRows }) {
                     justifyContent: "flex-end",
                     alignItems: "center",
                     gap: 10,
+                    cursor: "crosshair",
                   }}
                 >
                   <div
