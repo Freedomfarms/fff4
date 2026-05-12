@@ -1,13 +1,18 @@
 import { useState } from "react";
-import { budgetMonths, chartSets, yAxis } from "../data/constants.jsx";
+import { budgetMonthNames, budgetMonths, chartSets, yAxis } from "../data/constants.jsx";
 import { styles } from "../styles.js";
 import { buildAreaPath, buildLinePath, money, parseMoney } from "../utils/format.js";
 import { InfoDot, MetricCard } from "./Common.jsx";
 
-const CURRENT_OPEN_MONTH = "May";
+const FALLBACK_OPEN_MONTH = "May";
+const FALLBACK_OPEN_YEAR = 2026;
 const TRUE_CASH_CHART_MAX = 100000;
 const CHART_HEIGHT = 300;
 const MONTH_END_X = {
+  Jan: 80,
+  Feb: 147,
+  Mar: 238,
+  Apr: 318,
   May: 401,
   Jun: 481,
   Jul: 563,
@@ -17,6 +22,24 @@ const MONTH_END_X = {
   Nov: 889,
   Dec: 972,
 };
+const LOCKED_PROJECTION_VARIANCE = {
+  Jan: 850,
+  Feb: 1400,
+  Mar: 300,
+  Apr: 2380,
+  May: -520,
+  Jun: 760,
+  Jul: -430,
+  Aug: 1180,
+  Sep: 620,
+  Oct: -900,
+  Nov: 540,
+  Dec: 1250,
+};
+
+const monthNameToBudgetMonth = Object.fromEntries(
+  budgetMonths.map((month) => [budgetMonthNames[month], month])
+);
 
 function trueCashToChartY(value) {
   return Math.max(
@@ -46,6 +69,19 @@ function buildCurrentTrueCashChart(baseChart, trueCash) {
   };
 }
 
+function parseChartDate(date) {
+  const match = /^([A-Za-z]+)\s+\d{1,2},\s+(\d{4})$/.exec(date || "");
+  if (!match) {
+    return { month: FALLBACK_OPEN_MONTH, year: FALLBACK_OPEN_YEAR };
+  }
+
+  const [, monthName, year] = match;
+  return {
+    month: monthNameToBudgetMonth[monthName] || FALLBACK_OPEN_MONTH,
+    year: Number(year) || FALLBACK_OPEN_YEAR,
+  };
+}
+
 function buildProjectionAreaPath(points) {
   const firstPoint = points[0];
   const lastPoint = points[points.length - 1];
@@ -55,11 +91,48 @@ function buildProjectionAreaPath(points) {
   );
 }
 
+function getMonthEndActuals(chart) {
+  return chart.dates.reduce((actuals, date, index) => {
+    const { month, year } = parseChartDate(date);
+    actuals[`${year}-${month}`] = parseMoney(chart.values[index]);
+    return actuals;
+  }, {});
+}
+
+function buildLockedProjectionPoints({ chart, openMonth, openYear }) {
+  if (!chart.supportsProjection) return [];
+
+  const openMonthIndex = budgetMonths.indexOf(openMonth);
+  const monthEndActuals = getMonthEndActuals(chart);
+
+  return budgetMonths
+    .slice(0, openMonthIndex)
+    .map((month) => {
+      const actualEnding = monthEndActuals[`${openYear}-${month}`];
+      if (actualEnding === undefined || !MONTH_END_X[month]) return null;
+
+      const projectedEnding = actualEnding + LOCKED_PROJECTION_VARIANCE[month];
+      const variance = actualEnding - projectedEnding;
+
+      return {
+        x: MONTH_END_X[month],
+        y: trueCashToChartY(projectedEnding),
+        date: `${month} ${openYear} Locked Projection`,
+        value: money(projectedEnding),
+        actualValue: money(actualEnding),
+        variance,
+        type: "projection-history",
+      };
+    })
+    .filter(Boolean);
+}
+
 function buildProjectedTrueCashPoints({ chart, incomeStreams, budgetRows }) {
   if (!chart.supportsProjection) return [];
 
   const actualEndValue = parseMoney(chart.values[chart.values.length - 1] || chart.value);
-  const currentMonthIndex = budgetMonths.indexOf(CURRENT_OPEN_MONTH);
+  const { month: openMonth, year: openYear } = parseChartDate(chart.date);
+  const currentMonthIndex = budgetMonths.indexOf(openMonth);
   const projectionMonths = budgetMonths
     .slice(currentMonthIndex)
     .filter((month) => MONTH_END_X[month]);
@@ -79,7 +152,7 @@ function buildProjectedTrueCashPoints({ chart, incomeStreams, budgetRows }) {
     return {
       x: MONTH_END_X[month],
       y: trueCashToChartY(projectedValue),
-      date: `${month} 2026 Projection`,
+      date: `${month} ${openYear} Projection`,
       value: money(projectedValue),
       profit,
       type: "projected",
@@ -99,13 +172,23 @@ export function DashboardView({
 }) {
   const [hoverState, setHoverState] = useState(null);
   const chart = buildCurrentTrueCashChart(chartSets[activeRange], trueCash);
+  const { month: openMonth, year: openYear } = parseChartDate(chart.date);
   const linePath = buildLinePath(chart.points);
   const areaPath = buildAreaPath(chart.points);
+  const lockedProjectionPoints = buildLockedProjectionPoints({
+    chart,
+    openMonth,
+    openYear,
+  });
   const projectedTrueCashPoints = buildProjectedTrueCashPoints({
     chart,
     incomeStreams,
     budgetRows,
   });
+  const lockedProjectionPath =
+    lockedProjectionPoints.length > 1
+      ? buildLinePath(lockedProjectionPoints.map((point) => [point.x, point.y]))
+      : "";
   const projectionPath =
     projectedTrueCashPoints.length > 0
       ? buildLinePath([
@@ -136,6 +219,7 @@ export function DashboardView({
   });
   const combinedHoverPoints = [
     ...chartHoverPoints,
+    ...lockedProjectionPoints,
     ...projectedTrueCashPoints.map((point) => ({
       x: point.x,
       y: point.y,
@@ -145,6 +229,8 @@ export function DashboardView({
       type: point.type,
     })),
   ];
+  const isProjectionHover =
+    hoverState?.point.type === "projected" || hoverState?.point.type === "projection-history";
 
   return (
     <>
@@ -384,6 +470,31 @@ export function DashboardView({
               fill="#8edbff"
               filter="url(#netWorthGlow)"
             />
+            {lockedProjectionPoints.length > 0 ? (
+              <>
+                {lockedProjectionPath ? (
+                  <path
+                    d={lockedProjectionPath}
+                    fill="none"
+                    stroke="#ff9f1c"
+                    strokeWidth="2"
+                    opacity="0.46"
+                    filter="url(#projectedTrueCashGlow)"
+                  />
+                ) : null}
+                {lockedProjectionPoints.map((point) => (
+                  <circle
+                    key={point.date}
+                    cx={point.x}
+                    cy={point.y}
+                    r="4"
+                    fill="#ff9f1c"
+                    opacity="0.68"
+                    filter="url(#projectedTrueCashGlow)"
+                  />
+                ))}
+              </>
+            ) : null}
             {projectedTrueCashPoints.length > 0 ? (
               <>
                 <path d={projectionAreaPath} fill="url(#projectedTrueCashFill)" />
@@ -416,10 +527,14 @@ export function DashboardView({
               onMouseMove={(event) => {
                 const box = event.currentTarget.getBoundingClientRect();
                 const cursorX = Math.min(Math.max(event.clientX - box.left, 0), box.width);
+                const cursorY = Math.min(Math.max(event.clientY - box.top, 0), box.height);
                 const x = (cursorX / box.width) * 972;
+                const y = (cursorY / box.height) * CHART_HEIGHT;
                 let closest = combinedHoverPoints[0];
                 combinedHoverPoints.forEach((point) => {
-                  if (Math.abs(point.x - x) < Math.abs(closest.x - x)) closest = point;
+                  const pointDistance = Math.hypot(point.x - x, point.y - y);
+                  const closestDistance = Math.hypot(closest.x - x, closest.y - y);
+                  if (pointDistance < closestDistance) closest = point;
                 });
                 setHoverState({
                   cursorX: cursorX + 64,
@@ -440,14 +555,12 @@ export function DashboardView({
                 top: 0,
                 height: 300,
                 width: 1,
-                background:
-                  hoverState.point.type === "projected"
-                    ? "linear-gradient(to bottom, rgba(255,159,28,.08), rgba(255,159,28,.95), rgba(255,159,28,.08))"
-                    : "linear-gradient(to bottom, rgba(0,216,255,.08), rgba(0,216,255,.95), rgba(0,216,255,.08))",
-                boxShadow:
-                  hoverState.point.type === "projected"
-                    ? "0 0 18px rgba(255,159,28,.85)"
-                    : "0 0 18px rgba(0,216,255,.85)",
+                background: isProjectionHover
+                  ? "linear-gradient(to bottom, rgba(255,159,28,.08), rgba(255,159,28,.95), rgba(255,159,28,.08))"
+                  : "linear-gradient(to bottom, rgba(0,216,255,.08), rgba(0,216,255,.95), rgba(0,216,255,.08))",
+                boxShadow: isProjectionHover
+                  ? "0 0 18px rgba(255,159,28,.85)"
+                  : "0 0 18px rgba(0,216,255,.85)",
                 pointerEvents: "none",
               }}
             />
@@ -459,31 +572,33 @@ export function DashboardView({
                 position: "absolute",
                 left: `min(max(${hoverState.cursorX - 92}px, 64px), calc(100% - 184px))`,
                 top: Math.max(12, Math.min(210, hoverState.pointY - 76)),
-                border:
-                  hoverState.point.type === "projected"
-                    ? "1px solid rgba(255,159,28,.62)"
-                    : "1px solid rgba(0,216,255,.55)",
+                border: isProjectionHover
+                  ? "1px solid rgba(255,159,28,.62)"
+                  : "1px solid rgba(0,216,255,.55)",
                 background: "linear-gradient(180deg, rgba(6,22,43,.98), rgba(2,9,22,.96))",
                 borderRadius: 10,
                 padding: "12px 14px",
                 minWidth: 184,
-                boxShadow:
-                  hoverState.point.type === "projected"
-                    ? "0 0 28px rgba(255,159,28,.24), inset 0 0 18px rgba(255,159,28,.08)"
-                    : "0 0 28px rgba(0,136,255,.28), inset 0 0 18px rgba(0,216,255,.08)",
+                boxShadow: isProjectionHover
+                  ? "0 0 28px rgba(255,159,28,.24), inset 0 0 18px rgba(255,159,28,.08)"
+                  : "0 0 28px rgba(0,136,255,.28), inset 0 0 18px rgba(0,216,255,.08)",
                 pointerEvents: "none",
                 zIndex: 5,
               }}
             >
               <div
                 style={{
-                  color: hoverState.point.type === "projected" ? "#ffd08a" : "#8feaff",
+                  color: isProjectionHover ? "#ffd08a" : "#8feaff",
                   fontSize: 12,
                   textTransform: "uppercase",
                   letterSpacing: 1,
                 }}
               >
-                {hoverState.point.type === "projected" ? "Projected True Cash" : "True Cash Scan"}
+                {hoverState.point.type === "projection-history"
+                  ? "Locked Projection"
+                  : hoverState.point.type === "projected"
+                    ? "Projected True Cash"
+                    : "True Cash Scan"}
               </div>
               <div style={{ color: "white", fontSize: 15, fontWeight: 800, marginTop: 7 }}>
                 {hoverState.point.date}
@@ -503,11 +618,10 @@ export function DashboardView({
                     width: 9,
                     height: 9,
                     borderRadius: 999,
-                    background: hoverState.point.type === "projected" ? "#ff9f1c" : "#00d8ff",
-                    boxShadow:
-                      hoverState.point.type === "projected"
-                        ? "0 0 12px rgba(255,159,28,.9)"
-                        : "0 0 12px rgba(0,216,255,.9)",
+                    background: isProjectionHover ? "#ff9f1c" : "#00d8ff",
+                    boxShadow: isProjectionHover
+                      ? "0 0 12px rgba(255,159,28,.9)"
+                      : "0 0 12px rgba(0,216,255,.9)",
                   }}
                 />
                 {hoverState.point.value}
@@ -516,6 +630,14 @@ export function DashboardView({
                 <div style={{ color: "#a8bfdc", fontSize: 12, marginTop: 7 }}>
                   Monthly profit: {hoverState.point.profit >= 0 ? "+" : ""}
                   {money(hoverState.point.profit)}
+                </div>
+              ) : null}
+              {hoverState.point.type === "projection-history" ? (
+                <div style={{ color: "#a8bfdc", fontSize: 12, marginTop: 7 }}>
+                  Actual close: {hoverState.point.actualValue}
+                  <br />
+                  Variance: {hoverState.point.variance >= 0 ? "+" : ""}
+                  {money(hoverState.point.variance)}
                 </div>
               ) : null}
             </div>
@@ -530,11 +652,10 @@ export function DashboardView({
                 width: 12,
                 height: 12,
                 borderRadius: 999,
-                background: hoverState.point.type === "projected" ? "#ffd08a" : "#d9f7ff",
-                boxShadow:
-                  hoverState.point.type === "projected"
-                    ? "0 0 18px rgba(255,159,28,1)"
-                    : "0 0 18px rgba(0,216,255,1)",
+                background: isProjectionHover ? "#ffd08a" : "#d9f7ff",
+                boxShadow: isProjectionHover
+                  ? "0 0 18px rgba(255,159,28,1)"
+                  : "0 0 18px rgba(0,216,255,1)",
                 pointerEvents: "none",
                 zIndex: 4,
               }}
@@ -557,7 +678,7 @@ export function DashboardView({
               <span key={label}>{label}</span>
             ))}
           </div>
-          {projectedTrueCashPoints.length > 0 ? (
+          {lockedProjectionPoints.length > 0 || projectedTrueCashPoints.length > 0 ? (
             <div
               style={{
                 position: "absolute",
@@ -586,6 +707,23 @@ export function DashboardView({
                 />
                 Actual
               </span>
+              {lockedProjectionPoints.length > 0 ? (
+                <span>
+                  <b
+                    style={{
+                      display: "inline-block",
+                      width: 10,
+                      height: 10,
+                      borderRadius: 99,
+                      background: "#ff9f1c",
+                      boxShadow: "0 0 10px rgba(255,159,28,.55)",
+                      marginRight: 8,
+                      opacity: 0.58,
+                    }}
+                  />
+                  Locked Projection
+                </span>
+              ) : null}
               <span>
                 <b
                   style={{
@@ -598,7 +736,7 @@ export function DashboardView({
                     marginRight: 8,
                   }}
                 />
-                Projected
+                Current Projection
               </span>
             </div>
           ) : null}
