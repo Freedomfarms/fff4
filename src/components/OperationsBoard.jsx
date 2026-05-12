@@ -6,9 +6,6 @@ import { budgetMonths, incomeStreamSeed, yearlyOpsData } from "../data/constants
 export function OperationsBoard({ budgetRows }) {
   const [incomeStreams, setIncomeStreams] = useState(incomeStreamSeed);
   const [incomeDeleteTarget, setIncomeDeleteTarget] = useState(null);
-  const [monthlyAdjustments, setMonthlyAdjustments] = useState(
-    budgetMonths.reduce((acc, month) => ({ ...acc, [month]: 0 }), {})
-  );
   const [otherValue, setOtherValue] = useState(0);
   const [startingSpotDate, setStartingSpotDate] = useState("2025-01-01");
   const [hoveredCommandMonth, setHoveredCommandMonth] = useState(null);
@@ -69,14 +66,11 @@ export function OperationsBoard({ budgetRows }) {
       0
     );
 
-    const adjustment = Number(monthlyAdjustments[month.month] || 0);
-
     return {
       ...month,
       income,
       budget,
       baseBudget: budget,
-      adjustment,
       profit: income - budget,
       recurringIncome: income - oneTimeIncome,
       oneTimeIncome,
@@ -102,16 +96,6 @@ export function OperationsBoard({ budgetRows }) {
     };
   });
 
-  const updateMonthlyAdjustment = (month, value) => {
-    const cleaned = String(value).replace(/[^0-9.-]/g, "");
-    const numericValue = cleaned === "" || cleaned === "-" ? 0 : Number(cleaned);
-
-    setMonthlyAdjustments((current) => ({
-      ...current,
-      [month]: Number.isFinite(numericValue) ? numericValue : 0,
-    }));
-  };
-
   return (
     <div>
       <header
@@ -127,7 +111,7 @@ export function OperationsBoard({ budgetRows }) {
             Operations Board
           </h1>
           <p style={{ marginTop: 8, color: "#8ea8ca" }}>
-            Yearly command view of income streams, budget plan, adjustments, and projected profit.
+            Yearly command view of income streams, budget plan, and projected profit.
           </p>
         </div>
         <button
@@ -806,54 +790,19 @@ export function OperationsBoard({ budgetRows }) {
                 }}
               >
                 <div style={{ color: row.color, fontSize: 16, fontWeight: 950 }}>{row.label}</div>
-                {row.values.map((value, valueIndex) =>
-                  row.editable ? (
-                    <input
-                      key={valueIndex}
-                      value={money(value)}
-                      onChange={(event) =>
-                        updateMonthlyAdjustment(budgetMonths[valueIndex], event.target.value)
-                      }
-                      style={{
-                        color:
-                          Number(monthlyAdjustments[budgetMonths[valueIndex]] || 0) >= 0
-                            ? "#00f59b"
-                            : "#ff5d7a",
-                        textAlign: "right",
-                        fontSize: 14,
-                        fontWeight: 850,
-                        background: "transparent",
-                        border: "1px solid transparent",
-                        borderRadius: 7,
-                        padding: "4px 6px",
-                        width: "100%",
-                        minWidth: 0,
-                        boxSizing: "border-box",
-                        outline: "none",
-                      }}
-                      onFocus={(event) => {
-                        event.currentTarget.style.border = "1px solid rgba(255,182,93,.45)";
-                        event.currentTarget.style.background = "rgba(255,182,93,.08)";
-                      }}
-                      onBlur={(event) => {
-                        event.currentTarget.style.border = "1px solid transparent";
-                        event.currentTarget.style.background = "transparent";
-                      }}
-                    />
-                  ) : (
-                    <div
-                      key={valueIndex}
-                      style={{
-                        color: "#dcecff",
-                        textAlign: "right",
-                        fontSize: 14,
-                        fontWeight: 850,
-                      }}
-                    >
-                      {money(value)}
-                    </div>
-                  )
-                )}
+                {row.values.map((value, valueIndex) => (
+                  <div
+                    key={valueIndex}
+                    style={{
+                      color: "#dcecff",
+                      textAlign: "right",
+                      fontSize: 14,
+                      fontWeight: 850,
+                    }}
+                  >
+                    {money(value)}
+                  </div>
+                ))}
                 <div
                   style={{ color: row.color, textAlign: "right", fontSize: 16, fontWeight: 950 }}
                 >
@@ -899,131 +848,6 @@ export function OperationsBoard({ budgetRows }) {
               >
                 {yearlySurplus >= 0 ? "+" : ""}
                 {money(yearlySurplus)}
-              </div>
-            </div>
-
-            <div
-              style={{
-                display: "grid",
-                gridTemplateColumns: "120px repeat(12, minmax(0, 1fr)) 120px",
-                padding: "16px",
-                borderTop: "1px solid rgba(255,182,93,.18)",
-                alignItems: "center",
-                background: "rgba(255,182,93,.04)",
-                columnGap: 0,
-              }}
-            >
-              <div style={{ color: "#ffb65d", fontSize: 16, fontWeight: 950 }}>Adjustment</div>
-              {budgetMonths.map((month) => (
-                <div
-                  key={month}
-                  style={{
-                    display: "flex",
-                    justifyContent: "flex-end",
-                    alignItems: "center",
-                    width: "100%",
-                  }}
-                >
-                  <input
-                    value={String(monthlyAdjustments[month] || 0)}
-                    onChange={(event) => updateMonthlyAdjustment(month, event.target.value)}
-                    style={{
-                      color: Number(monthlyAdjustments[month] || 0) >= 0 ? "#00f59b" : "#ff5d7a",
-                      textAlign: "right",
-                      fontSize: 14,
-                      fontWeight: 850,
-                      background: "transparent",
-                      border: "1px solid transparent",
-                      borderRadius: 7,
-                      padding: "4px 6px",
-                      width: "100%",
-                      minWidth: 0,
-                      boxSizing: "border-box",
-                      outline: "none",
-                    }}
-                    onFocus={(event) => {
-                      event.currentTarget.style.border = "1px solid rgba(255,182,93,.45)";
-                      event.currentTarget.style.background = "rgba(255,182,93,.08)";
-                    }}
-                    onBlur={(event) => {
-                      event.currentTarget.style.border = "1px solid transparent";
-                      event.currentTarget.style.background = "transparent";
-                    }}
-                  />
-                </div>
-              ))}
-              <div style={{ color: "#ffb65d", textAlign: "right", fontSize: 16, fontWeight: 950 }}>
-                {money(
-                  budgetMonths.reduce(
-                    (sum, month) => sum + Number(monthlyAdjustments[month] || 0),
-                    0
-                  )
-                )}
-              </div>
-            </div>
-
-            <div
-              style={{
-                display: "grid",
-                gridTemplateColumns: "120px repeat(12, minmax(0, 1fr)) 120px",
-                padding: "16px",
-                alignItems: "center",
-                background: "linear-gradient(90deg, rgba(0,136,255,.10), rgba(0,245,155,.06))",
-                borderTop: "1px solid rgba(0,245,155,.10)",
-                columnGap: 0,
-              }}
-            >
-              <div style={{ color: "white", fontSize: 17, fontWeight: 950 }}>True Cash</div>
-              {dynamicYearlyOpsData.map((month) => {
-                const trueCash = month.profit + Number(monthlyAdjustments[month.month] || 0);
-                return (
-                  <div
-                    key={month.month}
-                    style={{
-                      color: trueCash >= 0 ? "#00f59b" : "#ff5d7a",
-                      textAlign: "right",
-                      fontSize: 14,
-                      fontWeight: 900,
-                      padding: "4px 6px",
-                      boxSizing: "border-box",
-                    }}
-                  >
-                    {trueCash >= 0 ? "+" : ""}
-                    {money(trueCash)}
-                  </div>
-                );
-              })}
-              <div
-                style={{
-                  color:
-                    yearlySurplus +
-                      budgetMonths.reduce(
-                        (sum, month) => sum + Number(monthlyAdjustments[month] || 0),
-                        0
-                      ) >=
-                    0
-                      ? "#00f59b"
-                      : "#ff5d7a",
-                  textAlign: "right",
-                  fontSize: 15,
-                  fontWeight: 950,
-                }}
-              >
-                {yearlySurplus +
-                  budgetMonths.reduce(
-                    (sum, month) => sum + Number(monthlyAdjustments[month] || 0),
-                    0
-                  ) >=
-                0
-                  ? "+"
-                  : ""}
-                {money(
-                  yearlySurplus +
-                    budgetMonths.reduce(
-                      (sum, month) => sum + Number(monthlyAdjustments[month] || 0),
-                      0
-                    )
-                )}
               </div>
             </div>
           </div>
