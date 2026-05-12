@@ -1,10 +1,9 @@
 import { useState } from "react";
 import { styles } from "../styles.js";
-import { money } from "../utils/format.js";
-import { budgetMonths, incomeStreamSeed, yearlyOpsData } from "../data/constants.jsx";
+import { money, parseMoney } from "../utils/format.js";
+import { budgetMonths, yearlyOpsData } from "../data/constants.jsx";
 
-export function OperationsBoard({ budgetRows }) {
-  const [incomeStreams, setIncomeStreams] = useState(incomeStreamSeed);
+export function OperationsBoard({ budgetRows, incomeStreams, setIncomeStreams }) {
   const [incomeDeleteTarget, setIncomeDeleteTarget] = useState(null);
   const [otherValue, setOtherValue] = useState(0);
   const [startingSpotDate, setStartingSpotDate] = useState("2026-01-01");
@@ -46,16 +45,14 @@ export function OperationsBoard({ budgetRows }) {
       })
     );
   };
-  const parseIncomeAmount = (amount) => Number(String(amount).replace(/[^0-9.-]/g, "")) || 0;
-
   const dynamicYearlyOpsData = yearlyOpsData.map((month) => {
     const activeStreams = incomeStreams.filter((stream) =>
       (stream.months || budgetMonths).includes(month.month)
     );
-    const income = activeStreams.reduce((sum, stream) => sum + parseIncomeAmount(stream.amount), 0);
+    const income = activeStreams.reduce((sum, stream) => sum + parseMoney(stream.amount), 0);
     const oneTimeIncome = activeStreams
       .filter((stream) => stream.type === "One-Time")
-      .reduce((sum, stream) => sum + parseIncomeAmount(stream.amount), 0);
+      .reduce((sum, stream) => sum + parseMoney(stream.amount), 0);
 
     const activeBudgetCategories = budgetRows.filter((category) =>
       (category.months || budgetMonths).includes(month.month)
@@ -86,7 +83,7 @@ export function OperationsBoard({ budgetRows }) {
   );
   const incomeOutlookRows = incomeStreams.map((stream) => {
     const monthlyValues = budgetMonths.map((month) =>
-      (stream.months || budgetMonths).includes(month) ? parseIncomeAmount(stream.amount) : 0
+      (stream.months || budgetMonths).includes(month) ? parseMoney(stream.amount) : 0
     );
     return {
       label: stream.name,

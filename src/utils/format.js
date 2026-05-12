@@ -3,12 +3,18 @@ export function buildLinePath(points) {
 }
 
 export function buildAreaPath(points) {
-  return buildLinePath(points) + " L 972 300 L 0 300 Z";
+  const firstPoint = points[0];
+  const lastPoint = points[points.length - 1];
+  return buildLinePath(points) + ` L ${lastPoint[0]} 300 L ${firstPoint[0]} 300 Z`;
 }
 
 export function money(value) {
   const number = Number(value) || 0;
   return "$" + number.toLocaleString("en-US");
+}
+
+export function parseMoney(value) {
+  return Number(String(value).replace(/[^0-9.-]/g, "")) || 0;
 }
 
 export function cleanMoneyInput(value) {

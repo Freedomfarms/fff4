@@ -1,5 +1,10 @@
 import { useState } from "react";
-import { initialAccounts, initialBudgetCategories, mockTransactions } from "./data/constants.jsx";
+import {
+  incomeStreamSeed,
+  initialAccounts,
+  initialBudgetCategories,
+  mockTransactions,
+} from "./data/constants.jsx";
 import { styles } from "./styles.js";
 import { money } from "./utils/format.js";
 import { AccountsView } from "./components/AccountsView.jsx";
@@ -16,6 +21,7 @@ function ForwardFreedomDashboard() {
   const [transactions, setTransactions] = useState(mockTransactions);
   const [selectedAccount, setSelectedAccount] = useState(null);
   const [budgetRows, setBudgetRows] = useState(initialBudgetCategories);
+  const [incomeStreams, setIncomeStreams] = useState(incomeStreamSeed);
   const [activeTab, setActiveTab] = useState("Dashboard");
   const [activeRange, setActiveRange] = useState("ALL");
 
@@ -267,6 +273,8 @@ function ForwardFreedomDashboard() {
               activeRange={activeRange}
               setActiveRange={setActiveRange}
               trueCash={trueCash}
+              incomeStreams={incomeStreams}
+              budgetRows={budgetRows}
               dynamicMetrics={dynamicMetrics}
               dynamicAllocations={dynamicAllocations}
               dynamicBreakdown={dynamicBreakdown}
@@ -278,7 +286,11 @@ function ForwardFreedomDashboard() {
               setBudgetRows={setBudgetRows}
             />
           ) : activeTab === "Operations Board" ? (
-            <OperationsBoard budgetRows={budgetRows} />
+            <OperationsBoard
+              budgetRows={budgetRows}
+              incomeStreams={incomeStreams}
+              setIncomeStreams={setIncomeStreams}
+            />
           ) : activeTab === "Add Accounts" ? (
             <AccountsView
               accounts={accounts}
