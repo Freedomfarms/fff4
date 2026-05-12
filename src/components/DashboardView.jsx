@@ -12,16 +12,23 @@ export function DashboardView({
   dynamicAllocations,
   dynamicBreakdown,
 }) {
-  const [hoverPoint, setHoverPoint] = useState(null);
+  const [hoverState, setHoverState] = useState(null);
   const chart = chartSets[activeRange];
   const linePath = buildLinePath(chart.points);
   const areaPath = buildAreaPath(chart.points);
-  const chartHoverPoints = chart.points.map((point, index) => ({
-    x: point[0],
-    y: point[1],
-    date: chart.dates[index] || chart.xAxis[index] || chart.date,
-    value: chart.values[index] || chart.value,
-  }));
+  const chartHoverPoints = chart.points.map((point, index) => {
+    const labelIndex =
+      chart.dates.length === chart.points.length
+        ? index
+        : Math.round((index / Math.max(chart.points.length - 1, 1)) * (chart.dates.length - 1));
+
+    return {
+      x: point[0],
+      y: point[1],
+      date: chart.dates[labelIndex] || chart.xAxis[labelIndex] || chart.date,
+      value: chart.values[labelIndex] || chart.value,
+    };
+  });
 
   return (
     <>
@@ -157,7 +164,7 @@ export function DashboardView({
                 key={range}
                 onClick={() => {
                   setActiveRange(range);
-                  setHoverPoint(null);
+                  setHoverState(null);
                 }}
                 style={{
                   color: activeRange === range ? "#00d8ff" : "#c9d8ee",
@@ -214,10 +221,9 @@ export function DashboardView({
             style={{
               position: "absolute",
               left: 64,
-              right: -220,
               top: 0,
               height: 300,
-              width: "calc(100% + 160px)",
+              width: "calc(100% - 64px)",
               overflow: "visible",
             }}
             viewBox="0 0 972 300"
@@ -254,22 +260,28 @@ export function DashboardView({
               style={{ cursor: "crosshair" }}
               onMouseMove={(event) => {
                 const box = event.currentTarget.getBoundingClientRect();
-                const x = ((event.clientX - box.left) / box.width) * 972;
+                const cursorX = Math.min(Math.max(event.clientX - box.left, 0), box.width);
+                const x = (cursorX / box.width) * 972;
                 let closest = chartHoverPoints[0];
                 chartHoverPoints.forEach((point) => {
                   if (Math.abs(point.x - x) < Math.abs(closest.x - x)) closest = point;
                 });
-                setHoverPoint(closest);
+                setHoverState({
+                  cursorX: cursorX + 64,
+                  pointX: (closest.x / 972) * box.width + 64,
+                  pointY: closest.y,
+                  point: closest,
+                });
               }}
-              onMouseLeave={() => setHoverPoint(null)}
+              onMouseLeave={() => setHoverState(null)}
             />
           </svg>
 
-          {hoverPoint ? (
+          {hoverState ? (
             <div
               style={{
                 position: "absolute",
-                left: `calc(64px + ${(hoverPoint.x / 972) * 100}%)`,
+                left: hoverState.cursorX,
                 top: 0,
                 height: 300,
                 width: 1,
@@ -281,12 +293,12 @@ export function DashboardView({
             />
           ) : null}
 
-          {hoverPoint ? (
+          {hoverState ? (
             <div
               style={{
                 position: "absolute",
-                left: `calc(64px + ${(hoverPoint.x / 972) * 100}% - 92px)`,
-                top: Math.max(12, Math.min(210, hoverPoint.y - 76)),
+                left: `min(max(${hoverState.cursorX - 92}px, 64px), calc(100% - 184px))`,
+                top: Math.max(12, Math.min(210, hoverState.pointY - 76)),
                 border: "1px solid rgba(0,216,255,.55)",
                 background: "linear-gradient(180deg, rgba(6,22,43,.98), rgba(2,9,22,.96))",
                 borderRadius: 10,
@@ -308,7 +320,7 @@ export function DashboardView({
                 Net Worth Scan
               </div>
               <div style={{ color: "white", fontSize: 15, fontWeight: 800, marginTop: 7 }}>
-                {hoverPoint.date}
+                {hoverState.point.date}
               </div>
               <div
                 style={{
@@ -329,17 +341,17 @@ export function DashboardView({
                     boxShadow: "0 0 12px rgba(0,216,255,.9)",
                   }}
                 />
-                {hoverPoint.value}
+                {hoverState.point.value}
               </div>
             </div>
           ) : null}
 
-          {hoverPoint ? (
+          {hoverState ? (
             <div
               style={{
                 position: "absolute",
-                left: `calc(64px + ${(hoverPoint.x / 972) * 100}% - 6px)`,
-                top: hoverPoint.y - 6,
+                left: hoverState.pointX - 6,
+                top: hoverState.pointY - 6,
                 width: 12,
                 height: 12,
                 borderRadius: 999,
@@ -355,7 +367,7 @@ export function DashboardView({
             style={{
               position: "absolute",
               left: 64,
-              right: -140,
+              right: 0,
               bottom: 0,
               display: "flex",
               justifyContent: "space-between",
