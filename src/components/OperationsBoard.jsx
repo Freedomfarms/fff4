@@ -7,7 +7,7 @@ export function OperationsBoard({ budgetRows }) {
   const [incomeStreams, setIncomeStreams] = useState(incomeStreamSeed);
   const [incomeDeleteTarget, setIncomeDeleteTarget] = useState(null);
   const [otherValue, setOtherValue] = useState(0);
-  const [startingSpotDate, setStartingSpotDate] = useState("2025-01-01");
+  const [startingSpotDate, setStartingSpotDate] = useState("2026-01-01");
   const [hoveredCommandMonth, setHoveredCommandMonth] = useState(null);
 
   const addIncomeStream = () => {

@@ -194,7 +194,7 @@ export function TransactionsView({
         <div
           style={{
             display: "grid",
-            gridTemplateColumns: "120px 1.4fr 1fr 1fr 160px",
+            gridTemplateColumns: "140px 1.4fr 1fr 1fr 160px",
             padding: "0 18px 16px",
             color: "#7294bb",
             fontSize: 13,
@@ -216,7 +216,7 @@ export function TransactionsView({
               key={`${tx.date}-${tx.merchant}-${tx.account}-${tx.amount}-${index}`}
               style={{
                 display: "grid",
-                gridTemplateColumns: "120px 1.4fr 1fr 1fr 160px",
+                gridTemplateColumns: "140px 1.4fr 1fr 1fr 160px",
                 alignItems: "center",
                 padding: "18px",
                 borderBottom: "1px solid rgba(0,136,255,.08)",

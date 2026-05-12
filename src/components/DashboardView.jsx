@@ -106,7 +106,7 @@ export function DashboardView({
                 padding: "10px 16px",
               }}
             >
-              ▣ &nbsp; May 12, 2023 - May 12, 2025⌄
+              ▣ &nbsp; {chart.dateRange}⌄
             </button>
             <button
               style={{
@@ -132,7 +132,7 @@ export function DashboardView({
         >
           <div style={{ display: "flex", alignItems: "flex-end", gap: 12 }}>
             <div style={{ color: "white", fontSize: 38, fontWeight: 720, letterSpacing: 0.4 }}>
-              {activeRange === "1Y" ? "$40,000.00" : money(trueCash)}
+              {money(trueCash)}
             </div>
             <div style={{ color: "#00f59b", fontSize: 14, fontWeight: 800, paddingBottom: 8 }}>
               ↑ {chart.change}

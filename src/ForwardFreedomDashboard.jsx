@@ -129,21 +129,21 @@ function ForwardFreedomDashboard() {
     };
     const newTransactions = [
       {
-        date: "May 13",
+        date: "May 13, 2026",
         merchant: "Plaid Sync Deposit",
         category: "Income",
         account: newAccount.name,
         amount: 1250.0,
       },
       {
-        date: "May 13",
+        date: "May 13, 2026",
         merchant: "Whole Foods",
         category: "Groceries",
         account: newAccount.name,
         amount: -86.42,
       },
       {
-        date: "May 13",
+        date: "May 13, 2026",
         merchant: "Electric Utility",
         category: "Utilities",
         account: newAccount.name,
@@ -172,7 +172,7 @@ function ForwardFreedomDashboard() {
 
   const makeMockAccountTransactions = (accountName) =>
     Array.from({ length: 15 }).map((_, index) => ({
-      date: `May ${15 - index}`,
+      date: `May ${15 - index}, 2026`,
       merchant: [
         "Amazon",
         "Shell",
