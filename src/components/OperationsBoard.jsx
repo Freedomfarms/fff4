@@ -11,6 +11,17 @@ function formatAdjustmentValue(value) {
   return String(Math.round(Number(value) || 0));
 }
 
+function normalizeAdjustmentInput(value) {
+  const rawValue = String(value);
+  const isNegative = rawValue.includes("-");
+  const digits = rawValue.replace(/\D/g, "");
+
+  if (!digits) return isNegative ? "-" : "";
+  if (isNegative && Number(digits) === 0) return "-";
+
+  return `${isNegative ? "-" : ""}${Number(digits)}`;
+}
+
 export function OperationsBoard({
   budgetRows,
   incomeStreams,
@@ -909,8 +920,7 @@ export function OperationsBoard({
                       : String(projectionAdjustments[month])
                   }
                   onChange={(event) => {
-                    const nextValue = event.target.value.replace(/[^\d-]/g, "");
-                    if (!/^-?\d*$/.test(nextValue)) return;
+                    const nextValue = normalizeAdjustmentInput(event.target.value);
                     setProjectionAdjustments((current) => ({
                       ...current,
                       [month]: nextValue,
@@ -930,6 +940,7 @@ export function OperationsBoard({
                     boxSizing: "border-box",
                   }}
                   onFocus={(event) => {
+                    event.currentTarget.select();
                     event.currentTarget.style.border = "1px solid rgba(255,159,28,.45)";
                     event.currentTarget.style.background = "rgba(255,159,28,.08)";
                   }}

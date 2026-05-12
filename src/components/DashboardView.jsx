@@ -140,6 +140,7 @@ export function DashboardView({
       date: point.date,
       value: point.value,
       profit: point.profit,
+      adjustment: point.adjustment,
       type: point.type,
     })),
   ];
@@ -542,11 +543,17 @@ export function DashboardView({
                 <div style={{ color: "#a8bfdc", fontSize: 12, marginTop: 7 }}>
                   Monthly profit: {hoverState.point.profit >= 0 ? "+" : ""}
                   {money(hoverState.point.profit)}
+                  <br />
+                  Adjustment: {hoverState.point.adjustment >= 0 ? "+" : ""}
+                  {wholeDollars(hoverState.point.adjustment)}
                 </div>
               ) : null}
               {hoverState.point.type === "projection-history" ? (
                 <div style={{ color: "#a8bfdc", fontSize: 12, marginTop: 7 }}>
                   Actual close: {hoverState.point.actualValue}
+                  <br />
+                  Adjustment: {hoverState.point.adjustment >= 0 ? "+" : ""}
+                  {wholeDollars(hoverState.point.adjustment)}
                   <br />
                   Variance: {hoverState.point.variance >= 0 ? "+" : ""}
                   {money(hoverState.point.variance)}

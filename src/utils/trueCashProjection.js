@@ -83,7 +83,8 @@ export function buildTrueCashProjectionSchedule({
     const actualEnding = monthEndActuals[`${openYear}-${month}`];
     if (actualEnding === undefined) return null;
 
-    cumulativeAdjustments += parseMoney(projectionAdjustments[month]);
+    const adjustment = parseMoney(projectionAdjustments[month]);
+    cumulativeAdjustments += adjustment;
     const projectedEnding =
       actualEnding + LOCKED_PROJECTION_VARIANCE[month] + cumulativeAdjustments;
     const variance = actualEnding - projectedEnding;
@@ -96,6 +97,7 @@ export function buildTrueCashProjectionSchedule({
       formattedValue: wholeDollars(projectedEnding),
       actualValue: wholeDollars(actualEnding),
       variance,
+      adjustment,
       type: "projection-history",
     };
   });
