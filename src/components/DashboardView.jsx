@@ -392,7 +392,6 @@ export function DashboardView({
                   fill="none"
                   stroke="#ff9f1c"
                   strokeWidth="3"
-                  strokeDasharray="8 8"
                   filter="url(#projectedTrueCashGlow)"
                 />
                 {projectedTrueCashPoints.map((point) => (
