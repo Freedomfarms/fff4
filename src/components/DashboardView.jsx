@@ -83,14 +83,6 @@ export function DashboardView({
   };
   const linePath = buildLinePath(chart.points);
   const areaPath = buildAreaPath(chart.points);
-  const lockedProjectionPoints = projectionSchedule
-    .filter((point) => point.type === "projection-history" && MONTH_END_X[point.month])
-    .map((point) => ({
-      ...point,
-      x: MONTH_END_X[point.month],
-      y: trueCashToChartY(point.value, chartMax),
-      value: point.formattedValue,
-    }));
   const projectedTrueCashPoints = projectionSchedule
     .filter((point) => point.type === "projected" && MONTH_END_X[point.month])
     .map((point) => ({
@@ -99,23 +91,13 @@ export function DashboardView({
       y: trueCashToChartY(point.value, chartMax),
       value: point.formattedValue,
     }));
-  const lockedProjectionPath =
-    lockedProjectionPoints.length > 1
-      ? buildLinePath(lockedProjectionPoints.map((point) => [point.x, point.y]))
-      : "";
   const projectionPath =
     projectedTrueCashPoints.length > 0
-      ? buildLinePath([
-          chart.points[chart.points.length - 1],
-          ...projectedTrueCashPoints.map((point) => [point.x, point.y]),
-        ])
+      ? buildLinePath(projectedTrueCashPoints.map((point) => [point.x, point.y]))
       : "";
   const projectionAreaPath =
     projectedTrueCashPoints.length > 0
-      ? buildProjectionAreaPath([
-          chart.points[chart.points.length - 1],
-          ...projectedTrueCashPoints.map((point) => [point.x, point.y]),
-        ])
+      ? buildProjectionAreaPath(projectedTrueCashPoints.map((point) => [point.x, point.y]))
       : "";
   const chartHoverPoints = chart.points.map((point, index) => {
     const labelIndex =
@@ -133,7 +115,6 @@ export function DashboardView({
   });
   const combinedHoverPoints = [
     ...chartHoverPoints,
-    ...lockedProjectionPoints,
     ...projectedTrueCashPoints.map((point) => ({
       x: point.x,
       y: point.y,
@@ -144,8 +125,7 @@ export function DashboardView({
       type: point.type,
     })),
   ];
-  const isProjectionHover =
-    hoverState?.point.type === "projected" || hoverState?.point.type === "projection-history";
+  const isProjectionHover = hoverState?.point.type === "projected";
 
   return (
     <>
@@ -385,29 +365,6 @@ export function DashboardView({
               fill="#8edbff"
               filter="url(#netWorthGlow)"
             />
-            {lockedProjectionPoints.length > 0 ? (
-              <>
-                {lockedProjectionPath ? (
-                  <path
-                    d={lockedProjectionPath}
-                    fill="none"
-                    stroke="#ff9f1c"
-                    strokeWidth="3"
-                    filter="url(#projectedTrueCashGlow)"
-                  />
-                ) : null}
-                {lockedProjectionPoints.map((point) => (
-                  <circle
-                    key={point.date}
-                    cx={point.x}
-                    cy={point.y}
-                    r="4"
-                    fill="#ffd08a"
-                    filter="url(#projectedTrueCashGlow)"
-                  />
-                ))}
-              </>
-            ) : null}
             {projectedTrueCashPoints.length > 0 ? (
               <>
                 <path d={projectionAreaPath} fill="url(#projectedTrueCashFill)" />
@@ -507,11 +464,7 @@ export function DashboardView({
                   letterSpacing: 1,
                 }}
               >
-                {hoverState.point.type === "projection-history"
-                  ? "Locked Projection"
-                  : hoverState.point.type === "projected"
-                    ? "Projected True Cash"
-                    : "True Cash Scan"}
+                {hoverState.point.type === "projected" ? "Projected True Cash" : "True Cash Scan"}
               </div>
               <div style={{ color: "white", fontSize: 15, fontWeight: 800, marginTop: 7 }}>
                 {hoverState.point.date}
@@ -546,17 +499,6 @@ export function DashboardView({
                   <br />
                   Adjustment: {hoverState.point.adjustment >= 0 ? "+" : ""}
                   {wholeDollars(hoverState.point.adjustment)}
-                </div>
-              ) : null}
-              {hoverState.point.type === "projection-history" ? (
-                <div style={{ color: "#a8bfdc", fontSize: 12, marginTop: 7 }}>
-                  Actual close: {hoverState.point.actualValue}
-                  <br />
-                  Adjustment: {hoverState.point.adjustment >= 0 ? "+" : ""}
-                  {wholeDollars(hoverState.point.adjustment)}
-                  <br />
-                  Variance: {hoverState.point.variance >= 0 ? "+" : ""}
-                  {money(hoverState.point.variance)}
                 </div>
               ) : null}
             </div>
@@ -597,7 +539,7 @@ export function DashboardView({
               <span key={label}>{label}</span>
             ))}
           </div>
-          {lockedProjectionPoints.length > 0 || projectedTrueCashPoints.length > 0 ? (
+          {projectedTrueCashPoints.length > 0 ? (
             <div
               style={{
                 position: "absolute",
@@ -626,22 +568,6 @@ export function DashboardView({
                 />
                 Actual
               </span>
-              {lockedProjectionPoints.length > 0 ? (
-                <span>
-                  <b
-                    style={{
-                      display: "inline-block",
-                      width: 10,
-                      height: 10,
-                      borderRadius: 99,
-                      background: "#ff9f1c",
-                      boxShadow: "0 0 10px rgba(255,159,28,.8)",
-                      marginRight: 8,
-                    }}
-                  />
-                  Locked Projection
-                </span>
-              ) : null}
               <span>
                 <b
                   style={{
@@ -654,7 +580,7 @@ export function DashboardView({
                     marginRight: 8,
                   }}
                 />
-                Current Projection
+                Projected
               </span>
             </div>
           ) : null}

@@ -1,23 +1,7 @@
 import { budgetMonthNames, budgetMonths } from "../data/constants.jsx";
 import { money, parseMoney, wholeDollars } from "./format.js";
 
-const FALLBACK_OPEN_MONTH = "May";
 const FALLBACK_OPEN_YEAR = 2026;
-
-export const LOCKED_PROJECTION_VARIANCE = {
-  Jan: 850,
-  Feb: 1400,
-  Mar: 300,
-  Apr: 2380,
-  May: -520,
-  Jun: 760,
-  Jul: -430,
-  Aug: 1180,
-  Sep: 620,
-  Oct: -900,
-  Nov: 540,
-  Dec: 1250,
-};
 
 const monthNameToBudgetMonth = Object.fromEntries(
   budgetMonths.map((month) => [budgetMonthNames[month], month])
@@ -26,12 +10,12 @@ const monthNameToBudgetMonth = Object.fromEntries(
 export function parseChartDate(date) {
   const match = /^([A-Za-z]+)\s+\d{1,2},\s+(\d{4})$/.exec(date || "");
   if (!match) {
-    return { month: FALLBACK_OPEN_MONTH, year: FALLBACK_OPEN_YEAR };
+    return { year: FALLBACK_OPEN_YEAR };
   }
 
   const [, monthName, year] = match;
   return {
-    month: monthNameToBudgetMonth[monthName] || FALLBACK_OPEN_MONTH,
+    month: monthNameToBudgetMonth[monthName],
     year: Number(year) || FALLBACK_OPEN_YEAR,
   };
 }
@@ -59,14 +43,6 @@ export function buildSyncedTrueCashChart(baseChart, trueCash, valueToChartY) {
   };
 }
 
-function getMonthEndActuals(chart) {
-  return chart.dates.reduce((actuals, date, index) => {
-    const { month, year } = parseChartDate(date);
-    actuals[`${year}-${month}`] = parseMoney(chart.values[index]);
-    return actuals;
-  }, {});
-}
-
 export function buildTrueCashProjectionSchedule({
   chart,
   incomeStreams,
@@ -75,35 +51,10 @@ export function buildTrueCashProjectionSchedule({
 }) {
   if (!chart.supportsProjection) return [];
 
-  const { month: openMonth, year: openYear } = parseChartDate(chart.date);
-  const openMonthIndex = Math.max(0, budgetMonths.indexOf(openMonth));
-  const monthEndActuals = getMonthEndActuals(chart);
-  let cumulativeAdjustments = 0;
-  const lockedMonths = budgetMonths.slice(0, openMonthIndex).map((month) => {
-    const actualEnding = monthEndActuals[`${openYear}-${month}`];
-    if (actualEnding === undefined) return null;
+  const { year: projectionYear } = parseChartDate(chart.date);
+  let projectedValue = parseMoney(chart.values[0] || chart.value);
 
-    const adjustment = parseMoney(projectionAdjustments[month]);
-    cumulativeAdjustments += adjustment;
-    const projectedEnding =
-      actualEnding + LOCKED_PROJECTION_VARIANCE[month] + cumulativeAdjustments;
-    const variance = actualEnding - projectedEnding;
-
-    return {
-      month,
-      year: openYear,
-      date: `${month} ${openYear} Locked Projection`,
-      value: projectedEnding,
-      formattedValue: wholeDollars(projectedEnding),
-      actualValue: wholeDollars(actualEnding),
-      variance,
-      adjustment,
-      type: "projection-history",
-    };
-  });
-  let projectedValue =
-    parseMoney(chart.values[chart.values.length - 1] || chart.value) + cumulativeAdjustments;
-  const currentAndFutureMonths = budgetMonths.slice(openMonthIndex).map((month) => {
+  return budgetMonths.map((month) => {
     const activeStreams = incomeStreams.filter((stream) =>
       (stream.months || budgetMonths).includes(month)
     );
@@ -117,8 +68,8 @@ export function buildTrueCashProjectionSchedule({
 
     return {
       month,
-      year: openYear,
-      date: `${month} ${openYear} Projection`,
+      year: projectionYear,
+      date: `${month} ${projectionYear} Projection`,
       value: projectedValue,
       formattedValue: wholeDollars(projectedValue),
       profit,
@@ -126,6 +77,4 @@ export function buildTrueCashProjectionSchedule({
       type: "projected",
     };
   });
-
-  return [...lockedMonths, ...currentAndFutureMonths].filter(Boolean);
 }
