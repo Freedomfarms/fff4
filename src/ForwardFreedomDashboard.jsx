@@ -190,18 +190,16 @@ function ForwardFreedomDashboard() {
     setActiveTab("Transactions");
   };
 
-  const addManualAccount = () => {
-    const manualAccountNumber =
-      accounts.filter((account) => account.status === "Manual").length + 1;
+  const addManualAccount = ({ name, type, institution, balance }) => {
     const newAccount = {
-      name: manualAccountNumber === 1 ? "Safe Cash" : `Manual Cash Account ${manualAccountNumber}`,
-      type: "Manual Cash",
-      institution: "Home Safe",
-      balance: 5000.0,
+      name,
+      type,
+      institution: institution || "Manual",
+      balance: Number(balance) || 0,
       status: "Manual",
     };
-
     setAccounts((current) => [...current, newAccount]);
+    openAccountTransactions(name);
   };
 
   const makeMockAccountTransactions = (accountName) =>

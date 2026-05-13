@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { styles } from "../styles.js";
 import { money } from "../utils/format.js";
 
@@ -28,13 +29,59 @@ const accountGroups = [
   },
 ];
 
+const ACCOUNT_TYPES = [
+  "Checking",
+  "Savings",
+  "Credit Card",
+  "Investment",
+  "Retirement",
+  "Manual Cash",
+];
+
+const EMPTY_FORM = { name: "", type: "Checking", institution: "", balance: "" };
+
 export function AccountsView({
   accounts,
   addManualAccount,
   connectMockPlaidAccount,
   openAccountTransactions,
 }) {
+  const [showForm, setShowForm] = useState(false);
+  const [form, setForm] = useState(EMPTY_FORM);
+
   const linkedBalance = accounts.reduce((sum, account) => sum + account.balance, 0);
+
+  const updateForm = (field, value) => setForm((f) => ({ ...f, [field]: value }));
+
+  const canSubmit =
+    form.name.trim() &&
+    form.type &&
+    Number.isFinite(Number(String(form.balance).replace(/[^0-9.-]/g, "")));
+
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    if (!canSubmit) return;
+    addManualAccount({
+      name: form.name.trim(),
+      type: form.type,
+      institution: form.institution.trim(),
+      balance: Number(String(form.balance).replace(/[^0-9.-]/g, "")),
+    });
+    setForm(EMPTY_FORM);
+    setShowForm(false);
+  };
+
+  const fieldStyle = {
+    color: "#eaf3ff",
+    background: "rgba(0,136,255,.08)",
+    border: "1px solid rgba(0,216,255,.18)",
+    borderRadius: 8,
+    padding: "10px 12px",
+    outline: "none",
+    fontWeight: 800,
+    colorScheme: "dark",
+    width: "100%",
+  };
 
   return (
     <div>
@@ -55,9 +102,9 @@ export function AccountsView({
         </div>
         <div style={{ display: "flex", gap: 12 }}>
           <button
-            onClick={addManualAccount}
+            onClick={() => setShowForm((v) => !v)}
             style={{
-              background: "rgba(0,136,255,.10)",
+              background: showForm ? "rgba(0,136,255,.18)" : "rgba(0,136,255,.10)",
               border: "1px solid rgba(0,216,255,.35)",
               borderRadius: 10,
               color: "#eaf3ff",
@@ -67,7 +114,7 @@ export function AccountsView({
               cursor: "pointer",
             }}
           >
-            ✎ Add Manually
+            {showForm ? "✕ Cancel" : "✎ Add Manually"}
           </button>
           <button
             onClick={connectMockPlaidAccount}
@@ -86,6 +133,159 @@ export function AccountsView({
           </button>
         </div>
       </header>
+
+      {/* Manual account form */}
+      {showForm ? (
+        <form
+          onSubmit={handleSubmit}
+          style={{
+            ...styles.panel,
+            padding: 22,
+            marginBottom: 20,
+            border: "1px solid rgba(0,216,255,.28)",
+            boxShadow: "inset 0 0 22px rgba(0,136,255,.07)",
+          }}
+        >
+          <div
+            style={{
+              color: "white",
+              fontSize: 18,
+              fontWeight: 900,
+              marginBottom: 18,
+              display: "flex",
+              alignItems: "center",
+              gap: 10,
+            }}
+          >
+            <span style={{ color: "#00d8ff" }}>✎</span> New Manual Account
+          </div>
+
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "1.6fr 1fr 1.2fr 1fr auto",
+              gap: 14,
+              alignItems: "end",
+            }}
+          >
+            <label style={{ display: "grid", gap: 7 }}>
+              <span
+                style={{
+                  color: "#8fb1d9",
+                  fontSize: 11,
+                  textTransform: "uppercase",
+                  letterSpacing: 0.8,
+                  fontWeight: 900,
+                }}
+              >
+                Account Name
+              </span>
+              <input
+                type="text"
+                value={form.name}
+                placeholder="e.g. Home Safe, Cash Envelope"
+                onChange={(e) => updateForm("name", e.target.value)}
+                style={fieldStyle}
+                autoFocus
+              />
+            </label>
+
+            <label style={{ display: "grid", gap: 7 }}>
+              <span
+                style={{
+                  color: "#8fb1d9",
+                  fontSize: 11,
+                  textTransform: "uppercase",
+                  letterSpacing: 0.8,
+                  fontWeight: 900,
+                }}
+              >
+                Type
+              </span>
+              <select
+                value={form.type}
+                onChange={(e) => updateForm("type", e.target.value)}
+                style={fieldStyle}
+              >
+                {ACCOUNT_TYPES.map((t) => (
+                  <option key={t} value={t} style={{ background: "#061224" }}>
+                    {t}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <label style={{ display: "grid", gap: 7 }}>
+              <span
+                style={{
+                  color: "#8fb1d9",
+                  fontSize: 11,
+                  textTransform: "uppercase",
+                  letterSpacing: 0.8,
+                  fontWeight: 900,
+                }}
+              >
+                Institution / Label
+              </span>
+              <input
+                type="text"
+                value={form.institution}
+                placeholder="Bank name or label"
+                onChange={(e) => updateForm("institution", e.target.value)}
+                style={fieldStyle}
+              />
+            </label>
+
+            <label style={{ display: "grid", gap: 7 }}>
+              <span
+                style={{
+                  color: "#8fb1d9",
+                  fontSize: 11,
+                  textTransform: "uppercase",
+                  letterSpacing: 0.8,
+                  fontWeight: 900,
+                }}
+              >
+                Balance ($)
+              </span>
+              <input
+                type="text"
+                value={form.balance}
+                placeholder="5000 or -1200"
+                onChange={(e) => updateForm("balance", e.target.value)}
+                style={fieldStyle}
+              />
+            </label>
+
+            <button
+              type="submit"
+              disabled={!canSubmit}
+              style={{
+                background: canSubmit
+                  ? "linear-gradient(90deg,#0077ff,#00d8ff)"
+                  : "rgba(120,130,150,.18)",
+                border: canSubmit
+                  ? "1px solid rgba(0,216,255,.45)"
+                  : "1px solid rgba(160,175,200,.16)",
+                borderRadius: 10,
+                color: canSubmit ? "white" : "#7f93ad",
+                padding: "11px 22px",
+                fontWeight: 900,
+                cursor: canSubmit ? "pointer" : "not-allowed",
+                boxShadow: canSubmit ? "0 0 20px rgba(0,136,255,.3)" : "none",
+                whiteSpace: "nowrap",
+              }}
+            >
+              Add + Open
+            </button>
+          </div>
+
+          <div style={{ color: "#7294bb", fontSize: 12, marginTop: 12 }}>
+            Use a negative balance for debt accounts (e.g. credit cards). After saving you&apos;ll
+            land directly in that account&apos;s transaction view.
+          </div>
+        </form>
+      ) : null}
 
       <section
         style={{
