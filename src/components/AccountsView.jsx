@@ -14,6 +14,7 @@ const accountGroups = [
   { title: "Investments", filter: (a) => a.type === "Investment" },
   { title: "Crypto", filter: (a) => a.type === "Crypto" },
   { title: "Precious Metals", filter: (a) => a.type === "Precious Metals" },
+  { title: "Real Estate", filter: (a) => a.type === "Real Estate" },
   { title: "Retirement", filter: (a) => a.type === "Retirement" },
   { title: "Credit Cards", filter: (a) => a.type === "Credit Card" },
   { title: "Mortgages / Loans", filter: (a) => a.type === "Mortgages / Loans" },
@@ -27,6 +28,7 @@ const ACCOUNT_TYPES = [
   "Investment",
   "Crypto",
   "Precious Metals",
+  "Real Estate",
   "Retirement",
   "Mortgages / Loans",
   "Manual Cash",
@@ -312,7 +314,7 @@ export function AccountsView({
         <div>
           <h1 style={{ margin: 0, fontSize: 32, color: "white", fontWeight: 800 }}>Add Accounts</h1>
           <p style={{ marginTop: 8, color: "#8ea8ca" }}>
-            Connect bank accounts, credit cards, investments, crypto, metals, and loans.
+            Connect bank accounts, credit cards, investments, crypto, metals, real estate, and loans.
           </p>
         </div>
         <div style={{ display: "flex", gap: 12 }}>

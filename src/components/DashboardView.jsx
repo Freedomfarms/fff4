@@ -53,6 +53,24 @@ function buildProjectionAreaPath(points) {
   );
 }
 
+function buildAllocationGradient(dynamicAllocations) {
+  const positiveAllocations = dynamicAllocations.filter((item) => Number(item.valueNumber) > 0);
+  if (positiveAllocations.length === 0) {
+    return "conic-gradient(#12355f 0 100%)";
+  }
+
+  const total = positiveAllocations.reduce((sum, item) => sum + Number(item.valueNumber || 0), 0);
+  let currentPercent = 0;
+
+  return `conic-gradient(${positiveAllocations
+    .map((item) => {
+      const start = currentPercent;
+      currentPercent += (Number(item.valueNumber || 0) / total) * 100;
+      return `${item.color} ${start.toFixed(2)}% ${currentPercent.toFixed(2)}%`;
+    })
+    .join(", ")})`;
+}
+
 export function DashboardView({
   activeRange,
   setActiveRange,
@@ -65,6 +83,7 @@ export function DashboardView({
   dynamicBreakdown,
 }) {
   const [hoverState, setHoverState] = useState(null);
+  const allocationGradient = buildAllocationGradient(dynamicAllocations);
   const chartValues = buildSyncedTrueCashChart(chartSets[activeRange], trueCash);
   const projectionSchedule = buildTrueCashProjectionSchedule({
     chart: chartValues,
@@ -652,8 +671,7 @@ export function DashboardView({
                 width: 144,
                 height: 144,
                 borderRadius: 999,
-                background:
-                  "conic-gradient(#168bff 0 53%, #8b34ff 53% 73%, #18d3ff 73% 90%, #ffb65d 90% 99%, #80ffd9 99% 100%)",
+                background: allocationGradient,
                 padding: 26,
                 boxShadow: "0 0 35px rgba(0,174,255,.45)",
               }}

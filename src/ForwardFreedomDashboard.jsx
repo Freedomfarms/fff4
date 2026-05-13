@@ -33,7 +33,6 @@ function normalizeCryptoPrice(value) {
 }
 
 const LIQUID_ACCOUNT_TYPES = new Set(["Checking", "Savings", "Manual Cash"]);
-const INVESTMENT_ACCOUNT_TYPES = new Set(["Investment", "Crypto", "Precious Metals"]);
 const CRYPTO_PRICE_SOURCE = "CoinGecko";
 
 function ForwardFreedomDashboard() {
@@ -61,7 +60,19 @@ function ForwardFreedomDashboard() {
   const trueCash = liquidCash - creditCardDebt;
 
   const investmentTotal = accounts
-    .filter((account) => INVESTMENT_ACCOUNT_TYPES.has(account.type))
+    .filter((account) => account.type === "Investment")
+    .reduce((sum, account) => sum + account.balance, 0);
+
+  const cryptoTotal = accounts
+    .filter((account) => account.type === "Crypto")
+    .reduce((sum, account) => sum + account.balance, 0);
+
+  const preciousMetalsTotal = accounts
+    .filter((account) => account.type === "Precious Metals")
+    .reduce((sum, account) => sum + account.balance, 0);
+
+  const realEstateTotal = accounts
+    .filter((account) => account.type === "Real Estate")
     .reduce((sum, account) => sum + account.balance, 0);
 
   const retirementTotal = accounts
@@ -108,37 +119,54 @@ function ForwardFreedomDashboard() {
     },
   ];
 
-  const realEstateValue = 82000;
   const totalNetWorth = Math.max(
-    investmentTotal + liquidCash + realEstateValue + retirementTotal,
+    trueCash + investmentTotal + cryptoTotal + preciousMetalsTotal + realEstateTotal + retirementTotal,
     1
   );
   const pct = (v) => `${((v / totalNetWorth) * 100).toFixed(1)}%`;
 
   const dynamicAllocations = [
     {
+      name: "True Cash",
+      amount: money(trueCash),
+      percent: pct(trueCash),
+      color: "#8b34ff",
+      valueNumber: trueCash,
+    },
+    {
       name: "Investments",
       amount: money(investmentTotal),
       percent: pct(investmentTotal),
       color: "#168bff",
+      valueNumber: investmentTotal,
     },
     {
-      name: "Liquid Cash",
-      amount: money(liquidCash),
-      percent: pct(liquidCash),
-      color: "#8b34ff",
+      name: "Crypto",
+      amount: money(cryptoTotal),
+      percent: pct(cryptoTotal),
+      color: "#00d8ff",
+      valueNumber: cryptoTotal,
+    },
+    {
+      name: "Precious Metals",
+      amount: money(preciousMetalsTotal),
+      percent: pct(preciousMetalsTotal),
+      color: "#f6c453",
+      valueNumber: preciousMetalsTotal,
     },
     {
       name: "Real Estate",
-      amount: money(realEstateValue),
-      percent: pct(realEstateValue),
+      amount: money(realEstateTotal),
+      percent: pct(realEstateTotal),
       color: "#18d3ff",
+      valueNumber: realEstateTotal,
     },
     {
-      name: "Retirement Accounts",
+      name: "Retirement",
       amount: money(retirementTotal),
       percent: pct(retirementTotal),
       color: "#ffb65d",
+      valueNumber: retirementTotal,
     },
   ];
 
