@@ -419,6 +419,7 @@ function ForwardFreedomDashboard() {
               activeRange={activeRange}
               setActiveRange={setActiveRange}
               trueCash={trueCash}
+              transactions={transactions}
               incomeStreams={incomeStreams}
               budgetRows={budgetRows}
               projectionAdjustments={projectionAdjustments}

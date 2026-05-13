@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { chartSets } from "../data/constants.jsx";
+import { budgetMonthNames, budgetMonths, chartSets } from "../data/constants.jsx";
 import { styles } from "../styles.js";
 import { buildAreaPath, buildLinePath, money, parseMoney, wholeDollars } from "../utils/format.js";
 import {
@@ -71,10 +71,85 @@ function buildAllocationGradient(dynamicAllocations) {
     .join(", ")})`;
 }
 
+const monthNameToBudgetMonth = Object.fromEntries(
+  budgetMonths.map((month) => [budgetMonthNames[month], month])
+);
+
+function parseBudgetReviewDate(value) {
+  const match = /^([A-Za-z]+)\s+\d{1,2},\s+(\d{4})$/.exec(value || "");
+  if (!match) return null;
+
+  const [, monthName, year] = match;
+  const month = monthNameToBudgetMonth[monthName];
+  if (!month) return null;
+
+  return { month, year: Number(year) || 2026 };
+}
+
+function buildMonthlyBudgetReview(transactions, budgetRows) {
+  const latestTransaction = transactions
+    .map((tx) => ({ tx, parsed: parseBudgetReviewDate(tx.date) }))
+    .filter((item) => item.parsed)
+    .sort((a, b) => {
+      const aIndex = budgetMonths.indexOf(a.parsed.month);
+      const bIndex = budgetMonths.indexOf(b.parsed.month);
+      return a.parsed.year === b.parsed.year ? bIndex - aIndex : b.parsed.year - a.parsed.year;
+    })[0];
+
+  const activeMonth = latestTransaction?.parsed?.month || "May";
+  const activeYear = latestTransaction?.parsed?.year || 2026;
+  const matchedBudgetCategories = budgetRows
+    .filter((row) => row.name !== "Other")
+    .flatMap((row) => row.transactionCategories);
+
+  const activeTransactions = transactions.filter((tx) => {
+    const parsed = parseBudgetReviewDate(tx.date);
+    return parsed?.month === activeMonth && parsed?.year === activeYear;
+  });
+
+  const rows = budgetRows
+    .filter((row) => (row.months || budgetMonths).includes(activeMonth))
+    .map((row) => {
+      const spent = activeTransactions
+        .filter((tx) => {
+          if (tx.amount >= 0) return false;
+          if (row.name === "Other") return !matchedBudgetCategories.includes(tx.category);
+          return row.transactionCategories.includes(tx.category);
+        })
+        .reduce((sum, tx) => sum + Math.abs(tx.amount), 0);
+
+      return {
+        id: row.id,
+        name: row.name,
+        budget: Number(row.budget || 0),
+        spent,
+        remaining: Number(row.budget || 0) - spent,
+        color: row.color || "#00d8ff",
+      };
+    });
+
+  const monthlyBudget = rows.reduce((sum, row) => sum + row.budget, 0);
+  const monthlySpent = rows.reduce((sum, row) => sum + row.spent, 0);
+  const topRows = [...rows]
+    .filter((row) => row.budget > 0 || row.spent > 0)
+    .sort((a, b) => Math.max(b.budget, b.spent) - Math.max(a.budget, a.spent))
+    .slice(0, 5);
+
+  return {
+    month: activeMonth,
+    year: activeYear,
+    monthlyBudget,
+    monthlySpent,
+    remaining: monthlyBudget - monthlySpent,
+    rows: topRows,
+  };
+}
+
 export function DashboardView({
   activeRange,
   setActiveRange,
   trueCash,
+  transactions,
   incomeStreams,
   budgetRows,
   projectionAdjustments,
@@ -87,10 +162,7 @@ export function DashboardView({
     (sum, item) => sum + Number(item.valueNumber || 0),
     0
   );
-  const rankedAllocations = [...dynamicAllocations]
-    .filter((item) => Number(item.valueNumber || 0) > 0)
-    .sort((a, b) => Number(b.valueNumber || 0) - Number(a.valueNumber || 0));
-  const largestAllocation = rankedAllocations[0] || null;
+  const monthlyBudgetReview = buildMonthlyBudgetReview(transactions, budgetRows);
   const chartValues = buildSyncedTrueCashChart(chartSets[activeRange], trueCash);
   const projectionSchedule = buildTrueCashProjectionSchedule({
     chart: chartValues,
@@ -676,11 +748,11 @@ export function DashboardView({
             <div
               style={{
                 position: "relative",
-                width: 168,
-                height: 168,
+                width: 182,
+                height: 182,
                 borderRadius: 999,
                 background: allocationGradient,
-                padding: 28,
+                padding: 30,
                 boxShadow: "0 0 35px rgba(0,174,255,.45)",
                 flexShrink: 0,
               }}
@@ -702,22 +774,11 @@ export function DashboardView({
               >
                 <div
                   style={{
-                    color: "#8fb1d9",
-                    fontSize: 11,
-                    textTransform: "uppercase",
-                    letterSpacing: 1,
-                    fontWeight: 800,
-                  }}
-                >
-                  Total Net Worth
-                </div>
-                <div
-                  style={{
                     color: "white",
-                    fontSize: 21,
+                    fontSize: 24,
                     fontWeight: 900,
-                    marginTop: 8,
                     lineHeight: 1.15,
+                    maxWidth: 112,
                   }}
                 >
                   {wholeDollars(allocationTotal)}
@@ -730,9 +791,9 @@ export function DashboardView({
                   key={item.name}
                   style={{
                     display: "grid",
-                    gridTemplateColumns: "minmax(0, 1fr) 116px 62px",
-                    gap: 18,
-                    marginBottom: 17,
+                    gridTemplateColumns: "minmax(0, 1fr) 126px 64px",
+                    gap: 16,
+                    marginBottom: 16,
                     alignItems: "center",
                     fontVariantNumeric: "tabular-nums",
                   }}
@@ -765,17 +826,52 @@ export function DashboardView({
               alignItems: "center",
               gap: 8,
               textTransform: "uppercase",
-              marginBottom: 22,
+              marginBottom: 18,
             }}
           >
-            Balance Sheet Snapshot <InfoDot />
+            Monthly Budget Review <InfoDot />
           </div>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 14 }}>
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+              gap: 18,
+              marginBottom: 16,
+            }}
+          >
+            <div>
+              <div style={{ color: "white", fontSize: 22, fontWeight: 900 }}>
+                {budgetMonthNames[monthlyBudgetReview.month]} {monthlyBudgetReview.year}
+              </div>
+              <div style={{ color: "#8ea8ca", fontSize: 13, marginTop: 6 }}>
+                Budgeted plan vs actual spending across your highest-impact categories.
+              </div>
+            </div>
+            <div
+              style={{
+                color: monthlyBudgetReview.remaining >= 0 ? "#00f59b" : "#ff5d7a",
+                fontSize: 15,
+                fontWeight: 900,
+                whiteSpace: "nowrap",
+              }}
+            >
+              {monthlyBudgetReview.remaining >= 0 ? "+" : ""}
+              {wholeDollars(monthlyBudgetReview.remaining)} remaining
+            </div>
+          </div>
+
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 14 }}>
             {[
-              ["Total Net Worth", wholeDollars(allocationTotal), "#8feaff"],
-              ["Active Categories", String(rankedAllocations.length), "#00f59b"],
-              ["Largest Bucket", largestAllocation?.name || "—", largestAllocation?.color || "#c9d8ee"],
-              ["Largest Share", largestAllocation?.percent || "—", largestAllocation?.color || "#ffb65d"],
+              ["Budget", money(monthlyBudgetReview.monthlyBudget), "#8feaff"],
+              ["Spent", money(monthlyBudgetReview.monthlySpent), "#ffb65d"],
+              [
+                monthlyBudgetReview.remaining >= 0 ? "Remaining" : "Over Budget",
+                `${monthlyBudgetReview.remaining >= 0 ? "" : "-"}${money(
+                  Math.abs(monthlyBudgetReview.remaining)
+                )}`,
+                monthlyBudgetReview.remaining >= 0 ? "#00f59b" : "#ff5d7a",
+              ],
             ].map(([label, value, color]) => (
               <div
                 key={label}
@@ -783,7 +879,7 @@ export function DashboardView({
                   border: "1px solid rgba(0,136,255,.18)",
                   borderRadius: 14,
                   background: "rgba(3,17,32,.58)",
-                  padding: "16px 18px",
+                  padding: "16px 18px 18px",
                 }}
               >
                 <div
@@ -811,52 +907,114 @@ export function DashboardView({
             ))}
           </div>
 
-          <div style={{ marginTop: 24 }}>
-            <div
-              style={{
-                color: "#8fb1d9",
-                fontSize: 12,
-                textTransform: "uppercase",
-                letterSpacing: 0.9,
-                marginBottom: 14,
-              }}
-            >
-              Category Ranking
-            </div>
-            {rankedAllocations.map((item, index) => (
+          <div style={{ marginTop: 22 }}>
+            {monthlyBudgetReview.rows.map((item) => {
+              const scaleMax = Math.max(item.budget, item.spent, 1);
+              const budgetWidth = `${(item.budget / scaleMax) * 100}%`;
+              const spentWidth = `${(item.spent / scaleMax) * 100}%`;
+
+              return (
               <div
-                key={item.name}
+                key={item.id}
                 style={{
-                  display: "grid",
-                  gridTemplateColumns: "32px minmax(0, 1fr) auto auto",
-                  gap: 16,
-                  alignItems: "center",
-                  padding: "12px 0",
-                  borderTop: index === 0 ? "1px solid rgba(0,136,255,.14)" : "1px solid rgba(0,136,255,.08)",
-                  fontVariantNumeric: "tabular-nums",
+                  padding: "14px 0",
+                  borderTop: "1px solid rgba(0,136,255,.10)",
                 }}
               >
-                <div style={{ color: "#5e7da0", fontSize: 13, fontWeight: 800 }}>#{index + 1}</div>
-                <div style={{ display: "flex", alignItems: "center", gap: 12, minWidth: 0 }}>
-                  <span
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "minmax(0, 1fr) auto auto",
+                    gap: 18,
+                    alignItems: "center",
+                    marginBottom: 10,
+                    fontVariantNumeric: "tabular-nums",
+                  }}
+                >
+                  <div style={{ display: "flex", alignItems: "center", gap: 12, minWidth: 0 }}>
+                    <span
+                      style={{
+                        width: 10,
+                        height: 10,
+                        borderRadius: 999,
+                        background: item.color,
+                        flexShrink: 0,
+                      }}
+                    />
+                    <span style={{ color: "white", fontWeight: 700 }}>{item.name}</span>
+                  </div>
+                  <div style={{ color: "#8feaff", whiteSpace: "nowrap" }}>
+                    Bgt {money(item.budget)}
+                  </div>
+                  <div
                     style={{
-                      width: 10,
-                      height: 10,
-                      borderRadius: 999,
-                      background: item.color,
-                      flexShrink: 0,
+                      color: item.remaining >= 0 ? "#00f59b" : "#ff5d7a",
+                      whiteSpace: "nowrap",
+                      fontWeight: 800,
                     }}
-                  />
-                  <span style={{ color: "white", fontWeight: 700 }}>{item.name}</span>
+                  >
+                    Spent {money(item.spent)}
+                  </div>
                 </div>
-                <div style={{ color: "#dcecff", textAlign: "right", whiteSpace: "nowrap" }}>
-                  {item.amount}
+
+                <div style={{ display: "grid", gap: 8 }}>
+                  <div style={{ display: "grid", gap: 5 }}>
+                    <div style={{ color: "#8fb1d9", fontSize: 11, textTransform: "uppercase" }}>
+                      Budget
+                    </div>
+                    <div style={{ height: 8, borderRadius: 999, background: "rgba(13,54,99,.55)" }}>
+                      <div
+                        style={{
+                          width: budgetWidth,
+                          height: "100%",
+                          borderRadius: 999,
+                          background: "#138bff",
+                          boxShadow: "0 0 12px rgba(19,139,255,.3)",
+                        }}
+                      />
+                    </div>
+                  </div>
+                  <div style={{ display: "grid", gap: 5 }}>
+                    <div style={{ color: "#8fb1d9", fontSize: 11, textTransform: "uppercase" }}>
+                      Spend
+                    </div>
+                    <div style={{ height: 8, borderRadius: 999, background: "rgba(13,54,99,.55)" }}>
+                      <div
+                        style={{
+                          width: spentWidth,
+                          height: "100%",
+                          borderRadius: 999,
+                          background: item.spent > item.budget ? "#ff5d7a" : "#ffb65d",
+                          boxShadow:
+                            item.spent > item.budget
+                              ? "0 0 12px rgba(255,93,122,.28)"
+                              : "0 0 12px rgba(255,182,93,.28)",
+                        }}
+                      />
+                    </div>
+                  </div>
                 </div>
-                <div style={{ color: item.color, textAlign: "right", whiteSpace: "nowrap", fontWeight: 800 }}>
-                  {item.percent}
+
+                <div
+                  style={{
+                    marginTop: 10,
+                    color: item.remaining >= 0 ? "#00f59b" : "#ff5d7a",
+                    fontSize: 12,
+                    fontWeight: 800,
+                    textAlign: "right",
+                  }}
+                >
+                  {item.remaining >= 0 ? "+" : "-"}
+                  {wholeDollars(Math.abs(item.remaining))} {item.remaining >= 0 ? "remaining" : "over budget"}
                 </div>
               </div>
-            ))}
+              );
+            })}
+            {monthlyBudgetReview.rows.length === 0 ? (
+              <div style={{ color: "#8ea8ca", fontSize: 14, paddingTop: 8 }}>
+                No budget review data is available for the active month yet.
+              </div>
+            ) : null}
           </div>
         </div>
       </section>
