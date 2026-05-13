@@ -27,6 +27,7 @@ const EMPTY_FORM = {
   pricePerUnit: "",
   propertyAddress: "",
   propertyType: "Primary Residence",
+  propertyMarketValue: "",
   linkedLoanId: "",
   linkedPropertyId: "",
   loanCategory: "Mortgage",
@@ -104,6 +105,9 @@ export function AccountsView({
   const parsedBalance = parseBalance(form.balance);
   const parsedQuantity = normalizeCryptoQuantity(form.quantity);
   const parsedPricePerUnit = parseBalance(form.pricePerUnit);
+  const parsedPropertyMarketValue = parseBalance(form.propertyMarketValue);
+  const linkedLoanBalance =
+    loanAccounts.find((account) => account.id === form.linkedLoanId)?.balance || 0;
   const derivedCryptoBalance = selectedCryptoQuote
     ? calculateCryptoBalance(parsedQuantity, selectedCryptoQuote.priceUsd)
     : 0;
@@ -111,6 +115,10 @@ export function AccountsView({
     parsedQuantity,
     parsedPricePerUnit
   );
+  const canDeriveRealEstateEquity = Boolean(form.linkedLoanId) && parsedPropertyMarketValue > 0;
+  const derivedRealEstateBalance = canDeriveRealEstateEquity
+    ? parsedPropertyMarketValue - Math.abs(linkedLoanBalance)
+    : 0;
   const canSubmit =
     form.name.trim().length > 0 &&
     form.type.length > 0 &&
@@ -127,6 +135,8 @@ export function AccountsView({
           form.pricePerUnit.trim().length > 0 &&
           Number.isFinite(parsedPricePerUnit) &&
           parsedPricePerUnit > 0
+      : isRealEstateAccount
+        ? canDeriveRealEstateEquity || (form.balance.trim().length > 0 && Number.isFinite(parsedBalance))
       : form.balance.trim().length > 0 && Number.isFinite(parsedBalance));
 
   useEffect(() => {
@@ -282,9 +292,11 @@ export function AccountsView({
       name: form.name.trim(),
       type: form.type,
       institution: form.institution.trim() || form.type,
-      balance: parsedBalance,
+      balance: isRealEstateAccount && canDeriveRealEstateEquity ? derivedRealEstateBalance : parsedBalance,
       propertyAddress: form.propertyAddress.trim(),
       propertyType: form.propertyType,
+      propertyMarketValue: parsedPropertyMarketValue,
+      equitySource: isRealEstateAccount && canDeriveRealEstateEquity ? "Derived" : "Manual",
       linkedLoanId: form.linkedLoanId,
       linkedPropertyId: form.linkedPropertyId,
       loanCategory: form.loanCategory,
@@ -547,6 +559,12 @@ export function AccountsView({
                         {account.type === "Real Estate" && account.propertyAddress ? (
                           <div style={{ color: "#8feaff", marginTop: 6, fontSize: 13 }}>
                             {account.propertyType} • {account.propertyAddress}
+                          </div>
+                        ) : null}
+                        {account.type === "Real Estate" && account.propertyMarketValue ? (
+                          <div style={{ color: "#7bc7ff", marginTop: 4, fontSize: 12 }}>
+                            {account.equitySource === "Derived" ? "Derived" : "Manual"} equity • Market{" "}
+                            {money(account.propertyMarketValue)}
                           </div>
                         ) : null}
                         {account.type === "Real Estate" && account.linkedLoanId ? (
@@ -1016,17 +1034,50 @@ export function AccountsView({
                     </label>
                   </div>
 
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
+                    <label style={labelStyle}>
+                      <span style={labelCapStyle}>Property Market Value</span>
+                      <input
+                        type="text"
+                        value={form.propertyMarketValue}
+                        placeholder="e.g. 540000"
+                        onChange={(e) => update("propertyMarketValue", e.target.value)}
+                        style={inputStyle}
+                      />
+                    </label>
+
+                    <label style={labelStyle}>
+                      <span style={labelCapStyle}>Equity Mode</span>
+                      <div
+                        style={{
+                          ...inputStyle,
+                          display: "flex",
+                          alignItems: "center",
+                          color: canDeriveRealEstateEquity ? "#00f59b" : "#8fb1d9",
+                        }}
+                      >
+                        {canDeriveRealEstateEquity ? "Derived from linked loan" : "Manual equity"}
+                      </div>
+                    </label>
+                  </div>
+
                   <label style={labelStyle}>
                     <span style={labelCapStyle}>Current Equity</span>
                     <input
                       type="text"
-                      value={form.balance}
+                      value={canDeriveRealEstateEquity ? money(derivedRealEstateBalance) : form.balance}
                       placeholder="e.g. 185000"
                       onChange={(e) => update("balance", e.target.value)}
-                      style={inputStyle}
+                      disabled={canDeriveRealEstateEquity}
+                      style={{
+                        ...inputStyle,
+                        opacity: canDeriveRealEstateEquity ? 0.8 : 1,
+                      }}
                     />
                     <span style={{ color: "#7294bb", fontSize: 12 }}>
-                      Enter the current equity only, not the full market value of the property.
+                      {canDeriveRealEstateEquity
+                        ? "This equity is auto-derived from market value minus the linked loan balance."
+                        : "Enter the current equity only, not the full market value of the property."}
                     </span>
                   </label>
                 </>

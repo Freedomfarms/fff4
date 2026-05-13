@@ -59,6 +59,10 @@ export function calculatePreciousMetalsBalance(quantity, pricePerUnit) {
   return roundCurrency((Number(quantity) || 0) * (Number(pricePerUnit) || 0));
 }
 
+export function calculateRealEstateEquity(marketValue, linkedLoanBalance) {
+  return roundCurrency((Number(marketValue) || 0) - Math.abs(Number(linkedLoanBalance) || 0));
+}
+
 export function accountSupportsTransactions(account) {
   return TRANSACTIONAL_ACCOUNT_TYPES.has(account?.type);
 }
@@ -107,11 +111,15 @@ export function normalizeAccount(account, index = 0) {
   }
 
   if (baseAccount.type === "Real Estate") {
+    const propertyMarketValue = roundCurrency(account.propertyMarketValue);
     return {
       ...baseAccount,
       propertyAddress: account.propertyAddress || "",
       linkedLoanId: account.linkedLoanId || "",
       propertyType: account.propertyType || "Property",
+      propertyMarketValue,
+      equitySource: account.equitySource || (propertyMarketValue > 0 ? "Derived" : "Manual"),
+      lastValuedAt: Number(account.lastValuedAt) || Date.now(),
     };
   }
 

@@ -2,7 +2,11 @@ import { useEffect, useState } from "react";
 import { budgetMonths } from "./data/constants.jsx";
 import { styles } from "./styles.js";
 import { money, parseMoney } from "./utils/format.js";
-import { accountSupportsTransactions, normalizeAccount } from "./utils/accounts.js";
+import {
+  accountSupportsTransactions,
+  calculateRealEstateEquity,
+  normalizeAccount,
+} from "./utils/accounts.js";
 import { loadPersistedAppState, persistAppState } from "./utils/appState.js";
 import {
   calculateCryptoBalance,
@@ -30,7 +34,7 @@ function normalizeCryptoPrice(value) {
 const LIQUID_ACCOUNT_TYPES = new Set(["Checking", "Savings", "Manual Cash"]);
 const CRYPTO_PRICE_SOURCE = "CoinGecko";
 const THIRTY_DAY_WINDOW = 30;
-const SNAPSHOT_RETENTION_DAYS = 45;
+const SNAPSHOT_RETENTION_DAYS = 400;
 
 function getLocalDateKey(date = new Date()) {
   const year = date.getFullYear();
@@ -284,6 +288,39 @@ function ForwardFreedomDashboard() {
   ];
 
   useEffect(() => {
+    setAccounts((current) => {
+      let changed = false;
+
+      const nextAccounts = current.map((account) => {
+        if (account.type !== "Real Estate") return account;
+        if (!account.linkedLoanId || !account.propertyMarketValue) return account;
+
+        const linkedLoan = current.find((candidate) => candidate.id === account.linkedLoanId);
+        if (!linkedLoan) return account;
+
+        const nextEquity = calculateRealEstateEquity(
+          account.propertyMarketValue,
+          linkedLoan.balance
+        );
+
+        if (account.balance === nextEquity && account.equitySource === "Derived") {
+          return account;
+        }
+
+        changed = true;
+        return {
+          ...account,
+          balance: nextEquity,
+          equitySource: "Derived",
+          lastValuedAt: Date.now(),
+        };
+      });
+
+      return changed ? nextAccounts : current;
+    });
+  }, [accounts]);
+
+  useEffect(() => {
     const staleCryptoAccounts = accounts.filter(
       (account) =>
         account.type === "Crypto" &&
@@ -393,6 +430,8 @@ function ForwardFreedomDashboard() {
     lastValuedAt,
     propertyAddress,
     propertyType,
+    propertyMarketValue,
+    equitySource,
     linkedLoanId,
     linkedPropertyId,
     loanCategory,
@@ -414,6 +453,9 @@ function ForwardFreedomDashboard() {
       status: "Manual",
       propertyAddress: propertyAddress || "",
       propertyType: propertyType || "",
+      propertyMarketValue: Number(propertyMarketValue) || 0,
+      equitySource: equitySource || "Manual",
+      lastValuedAt: Date.now(),
       linkedLoanId: linkedLoanId || "",
       linkedPropertyId: linkedPropertyId || "",
       loanCategory: loanCategory || "",

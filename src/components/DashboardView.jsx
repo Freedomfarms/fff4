@@ -94,6 +94,12 @@ function formatSnapshotLabel(dateKey) {
   });
 }
 
+function parseSnapshotDate(dateKey) {
+  const [year, month, day] = String(dateKey || "").split("-").map(Number);
+  if (!year || !month || !day) return null;
+  return new Date(year, month - 1, day);
+}
+
 const monthNameToBudgetMonth = Object.fromEntries(
   budgetMonths.map((month) => [budgetMonthNames[month], month])
 );
@@ -162,11 +168,24 @@ function buildMonthlyBudgetReview(transactions, budgetRows) {
   };
 }
 
-function buildNetWorthHistory(metricSnapshots) {
-  const entries = Object.entries(metricSnapshots || {})
+function buildNetWorthHistory(metricSnapshots, range) {
+  const now = new Date();
+  const rangeStart = new Date(now);
+  if (range === "90D") rangeStart.setDate(now.getDate() - 89);
+  if (range === "1Y") rangeStart.setFullYear(now.getFullYear() - 1);
+  const rangeEntries = Object.entries(metricSnapshots || {})
     .sort(([a], [b]) => a.localeCompare(b))
     .filter(([, snapshot]) => typeof snapshot?.totalNetWorth === "number")
-    .slice(-30);
+    .filter(([dateKey]) => {
+      const date = parseSnapshotDate(dateKey);
+      if (!date) return false;
+      if (range === "30D") return date >= new Date(now.getFullYear(), now.getMonth(), now.getDate() - 29);
+      if (range === "90D") return date >= rangeStart;
+      if (range === "YTD") return date >= new Date(now.getFullYear(), 0, 1);
+      if (range === "1Y") return date >= rangeStart;
+      return true;
+    });
+  const entries = rangeEntries;
 
   if (entries.length === 0) {
     return {
@@ -186,13 +205,13 @@ function buildNetWorthHistory(metricSnapshots) {
   const paddedRange = Math.max((maxValue - minValue) * 0.18, 1);
   const upper = maxValue + paddedRange;
   const lower = minValue - paddedRange;
-  const range = Math.max(upper - lower, 1);
+  const chartRange = Math.max(upper - lower, 1);
 
   const points = entries.map(([, snapshot], index) => {
     const x =
       entries.length === 1 ? NET_WORTH_HISTORY_W / 2 : (index / (entries.length - 1)) * NET_WORTH_HISTORY_W;
     const value = Number(snapshot.totalNetWorth) || 0;
-    const y = NET_WORTH_HISTORY_H - ((value - lower) / range) * NET_WORTH_HISTORY_H;
+    const y = NET_WORTH_HISTORY_H - ((value - lower) / chartRange) * NET_WORTH_HISTORY_H;
     return [x, y];
   });
 
@@ -229,13 +248,14 @@ export function DashboardView({
   metricSnapshots,
 }) {
   const [hoverState, setHoverState] = useState(null);
+  const [netWorthHistoryRange, setNetWorthHistoryRange] = useState("30D");
   const allocationGradient = buildAllocationGradient(dynamicAllocations);
   const allocationTotal = dynamicAllocations.reduce(
     (sum, item) => sum + Number(item.valueNumber || 0),
     0
   );
   const monthlyBudgetReview = buildMonthlyBudgetReview(transactions, budgetRows);
-  const netWorthHistory = buildNetWorthHistory(metricSnapshots);
+  const netWorthHistory = buildNetWorthHistory(metricSnapshots, netWorthHistoryRange);
   const chartValues = buildSyncedTrueCashChart(chartSets[activeRange], trueCash);
   const projectionSchedule = buildTrueCashProjectionSchedule({
     chart: chartValues,
@@ -842,21 +862,47 @@ export function DashboardView({
                 : "Daily history is building"}
             </div>
           </div>
-          <button
-            onClick={() => setActiveTab("Add Accounts")}
-            style={{
-              background: "rgba(0,136,255,.12)",
-              border: "1px solid rgba(0,216,255,.28)",
-              color: "#d7ebff",
-              borderRadius: 8,
-              padding: "10px 14px",
-              cursor: "pointer",
-              fontWeight: 700,
-              whiteSpace: "nowrap",
-            }}
-          >
-            View Accounts
-          </button>
+          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+            <div style={{ display: "flex", gap: 8 }}>
+              {["30D", "90D", "YTD", "1Y"].map((range) => (
+                <button
+                  key={range}
+                  onClick={() => setNetWorthHistoryRange(range)}
+                  style={{
+                    background:
+                      netWorthHistoryRange === range ? "rgba(0,136,255,.18)" : "rgba(0,136,255,.08)",
+                    border:
+                      netWorthHistoryRange === range
+                        ? "1px solid rgba(0,216,255,.42)"
+                        : "1px solid rgba(0,216,255,.18)",
+                    color: netWorthHistoryRange === range ? "#eaf7ff" : "#9fbddb",
+                    borderRadius: 8,
+                    padding: "8px 10px",
+                    cursor: "pointer",
+                    fontWeight: 800,
+                    fontSize: 12,
+                  }}
+                >
+                  {range}
+                </button>
+              ))}
+            </div>
+            <button
+              onClick={() => setActiveTab("Add Accounts")}
+              style={{
+                background: "rgba(0,136,255,.12)",
+                border: "1px solid rgba(0,216,255,.28)",
+                color: "#d7ebff",
+                borderRadius: 8,
+                padding: "10px 14px",
+                cursor: "pointer",
+                fontWeight: 700,
+                whiteSpace: "nowrap",
+              }}
+            >
+              View Accounts
+            </button>
+          </div>
         </div>
 
         {netWorthHistory.points.length > 1 ? (
