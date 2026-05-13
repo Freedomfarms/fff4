@@ -81,6 +81,27 @@ function formatLastUpdated(value) {
   });
 }
 
+const QUICK_START_TEMPLATES = [
+  {
+    title: "Start with cash",
+    description: "Add a checking, savings, or manual cash account so True Cash can anchor the dashboard.",
+    type: "Checking",
+    accent: "#00d8ff",
+  },
+  {
+    title: "Track what you owe",
+    description: "Add credit cards and mortgages/loans so liabilities flow into debt and equity calculations.",
+    type: "Mortgages / Loans",
+    accent: "#ff8fa3",
+  },
+  {
+    title: "Track what grows",
+    description: "Add investments, crypto, metals, and retirement accounts to build a true net worth view.",
+    type: "Investment",
+    accent: "#8feaff",
+  },
+];
+
 export function AccountsView({
   accounts,
   addManualAccount,
@@ -289,8 +310,8 @@ export function AccountsView({
     return () => controller.abort();
   }, [selectedCrypto]);
 
-  const openModal = () => {
-    setForm(EMPTY_FORM);
+  const openModal = (overrides = {}) => {
+    setForm({ ...EMPTY_FORM, ...overrides });
     setCryptoSearchQuery("");
     setCryptoResults([]);
     setSelectedCrypto(null);
@@ -309,6 +330,20 @@ export function AccountsView({
     setCryptoSearchError("");
     setCryptoQuoteError("");
     setShowModal(false);
+  };
+
+  const launchQuickStart = (type) => {
+    openModal({
+      type,
+      institution:
+        type === "Checking"
+          ? "Primary Bank"
+          : type === "Mortgages / Loans"
+            ? "Lender"
+            : type === "Investment"
+              ? "Brokerage"
+              : "",
+    });
   };
 
   const handleSubmit = (e) => {
@@ -552,139 +587,191 @@ export function AccountsView({
       {/* Account list */}
       <section style={{ ...styles.panel, padding: 24 }}>
         <div style={{ height: 4 }} />
-        {ACCOUNT_GROUPS.map((group) => {
-          const grouped = accounts.filter(group.filter);
-          if (grouped.length === 0) return null;
-          return (
-            <div key={group.title} style={{ marginBottom: 28 }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 16 }}>
-                <div
+        {accounts.length === 0 ? (
+          <div style={{ display: "grid", gap: 18 }}>
+            <div style={{ textAlign: "center", padding: "18px 10px 4px" }}>
+              <div style={{ color: "white", fontSize: 28, fontWeight: 900 }}>
+                Start your financial system
+              </div>
+              <div style={{ color: "#8ea8ca", marginTop: 10, fontSize: 15, lineHeight: 1.6 }}>
+                Add your core accounts first so Dashboard, Budget, Forecast, and Transactions all
+                have a real source of truth to work from.
+              </div>
+            </div>
+
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 16 }}>
+              {QUICK_START_TEMPLATES.map((template) => (
+                <button
+                  key={template.title}
+                  onClick={() => launchQuickStart(template.type)}
                   style={{
-                    width: 10,
-                    height: 10,
-                    borderRadius: 999,
-                    background: "#00d8ff",
-                    boxShadow: "0 0 12px rgba(0,216,255,.8)",
-                  }}
-                />
-                <div
-                  style={{
-                    color: "#dcecff",
-                    fontSize: 18,
-                    fontWeight: 800,
-                    letterSpacing: 0.5,
-                    textTransform: "uppercase",
+                    border: "1px solid rgba(0,136,255,.22)",
+                    background: "rgba(3,17,32,.72)",
+                    borderRadius: 16,
+                    padding: 20,
+                    textAlign: "left",
+                    cursor: "pointer",
+                    boxShadow: "inset 0 0 24px rgba(0,80,160,.08)",
                   }}
                 >
-                  {group.title}
-                </div>
-              </div>
-              <div
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
-                  gap: 16,
-                }}
-              >
-                {grouped.map((account) => (
                   <div
-                    key={account.id}
-                    onClick={() => openAccountTransactions(account.name)}
                     style={{
-                      border: "1px solid rgba(0,136,255,.22)",
-                      background: "rgba(3,17,32,.72)",
-                      borderRadius: 16,
-                      padding: 18,
-                      boxShadow: "inset 0 0 24px rgba(0,80,160,.08)",
-                      cursor: "pointer",
+                      color: template.accent,
+                      fontSize: 12,
+                      textTransform: "uppercase",
+                      letterSpacing: 1,
+                      fontWeight: 900,
                     }}
                   >
-                    <div style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
-                      <div>
-                        <div style={{ color: "white", fontSize: 19, fontWeight: 800 }}>
-                          {account.name}
+                    {template.type}
+                  </div>
+                  <div style={{ color: "white", fontSize: 20, fontWeight: 800, marginTop: 10 }}>
+                    {template.title}
+                  </div>
+                  <div style={{ color: "#8ea8ca", marginTop: 10, lineHeight: 1.55 }}>
+                    {template.description}
+                  </div>
+                  <div style={{ color: "#8feaff", marginTop: 16, fontWeight: 800 }}>Open setup →</div>
+                </button>
+              ))}
+            </div>
+          </div>
+        ) : (
+          ACCOUNT_GROUPS.map((group) => {
+            const grouped = accounts.filter(group.filter);
+            if (grouped.length === 0) return null;
+            return (
+              <div key={group.title} style={{ marginBottom: 28 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 16 }}>
+                  <div
+                    style={{
+                      width: 10,
+                      height: 10,
+                      borderRadius: 999,
+                      background: "#00d8ff",
+                      boxShadow: "0 0 12px rgba(0,216,255,.8)",
+                    }}
+                  />
+                  <div
+                    style={{
+                      color: "#dcecff",
+                      fontSize: 18,
+                      fontWeight: 800,
+                      letterSpacing: 0.5,
+                      textTransform: "uppercase",
+                    }}
+                  >
+                    {group.title}
+                  </div>
+                </div>
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+                    gap: 16,
+                  }}
+                >
+                  {grouped.map((account) => (
+                    <div
+                      key={account.id}
+                      onClick={() => openAccountTransactions(account.name)}
+                      style={{
+                        border: "1px solid rgba(0,136,255,.22)",
+                        background: "rgba(3,17,32,.72)",
+                        borderRadius: 16,
+                        padding: 18,
+                        boxShadow: "inset 0 0 24px rgba(0,80,160,.08)",
+                        cursor: "pointer",
+                      }}
+                    >
+                      <div style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
+                        <div>
+                          <div style={{ color: "white", fontSize: 19, fontWeight: 800 }}>
+                            {account.name}
+                          </div>
+                          <div style={{ color: "#8fb1d9", marginTop: 6 }}>
+                            {account.institution} • {account.type}
+                          </div>
+                          {account.type === "Crypto" && account.cryptoSymbol ? (
+                            <div style={{ color: "#5fd6ff", marginTop: 6, fontSize: 13 }}>
+                              {formatCryptoQuantity(account.quantity)} {account.cryptoSymbol} @{" "}
+                              {formatCryptoPrice(account.lastPriceUsd || 0)} •{" "}
+                              {formatLastUpdated(account.lastPriceUpdatedAt)}
+                            </div>
+                          ) : null}
+                          {account.type === "Precious Metals" ? (
+                            <div style={{ color: "#f6d48d", marginTop: 6, fontSize: 13 }}>
+                              {formatCryptoQuantity(account.quantity)} {account.metalUnit}{" "}
+                              {account.metalType === "Custom" && account.metalCustomName
+                                ? account.metalCustomName
+                                : account.metalType}{" "}
+                              @ {money(account.pricePerUnit || 0)} / {account.metalUnit} •{" "}
+                              {account.valuationSource || "Manual"} • {formatLastUpdated(account.lastValuedAt)}
+                            </div>
+                          ) : null}
+                          {account.type === "Real Estate" && account.propertyAddress ? (
+                            <div style={{ color: "#8feaff", marginTop: 6, fontSize: 13 }}>
+                              {account.propertyType} • {account.propertyAddress}
+                            </div>
+                          ) : null}
+                          {account.type === "Real Estate" && account.propertyMarketValue ? (
+                            <div style={{ color: "#7bc7ff", marginTop: 4, fontSize: 12 }}>
+                              {account.equitySource === "Derived" ? "Derived" : "Manual"} equity • Market{" "}
+                              {money(account.propertyMarketValue)}
+                            </div>
+                          ) : null}
+                          {account.type === "Real Estate" && account.linkedLoanId ? (
+                            <div style={{ color: "#7bc7ff", marginTop: 4, fontSize: 12 }}>
+                              Linked loan:{" "}
+                              {loanAccounts.find((loanAccount) => loanAccount.id === account.linkedLoanId)
+                                ?.name || "Saved link"}
+                            </div>
+                          ) : null}
+                          {account.type === "Mortgages / Loans" ? (
+                            <div style={{ color: "#ffb6a0", marginTop: 6, fontSize: 13 }}>
+                              {account.loanCategory}
+                              {account.interestRate ? ` • ${account.interestRate}% APR` : ""}
+                              {account.monthlyPayment ? ` • ${account.monthlyPayment}/mo` : ""}
+                            </div>
+                          ) : null}
+                          {account.type === "Mortgages / Loans" && account.linkedPropertyId ? (
+                            <div style={{ color: "#ffc9bd", marginTop: 4, fontSize: 12 }}>
+                              Linked property:{" "}
+                              {realEstateAccounts.find(
+                                (propertyAccount) => propertyAccount.id === account.linkedPropertyId
+                              )?.name || "Saved link"}
+                            </div>
+                          ) : null}
                         </div>
-                        <div style={{ color: "#8fb1d9", marginTop: 6 }}>
-                          {account.institution} • {account.type}
+                        <div
+                          style={{
+                            color: "#00f59b",
+                            fontSize: 12,
+                            fontWeight: 900,
+                            textTransform: "uppercase",
+                          }}
+                        >
+                          {account.status}
                         </div>
-                        {account.type === "Crypto" && account.cryptoSymbol ? (
-                          <div style={{ color: "#5fd6ff", marginTop: 6, fontSize: 13 }}>
-                            {formatCryptoQuantity(account.quantity)} {account.cryptoSymbol} @{" "}
-                            {formatCryptoPrice(account.lastPriceUsd || 0)} • {formatLastUpdated(account.lastPriceUpdatedAt)}
-                          </div>
-                        ) : null}
-                        {account.type === "Precious Metals" ? (
-                          <div style={{ color: "#f6d48d", marginTop: 6, fontSize: 13 }}>
-                            {formatCryptoQuantity(account.quantity)} {account.metalUnit}{" "}
-                            {account.metalType === "Custom" && account.metalCustomName
-                              ? account.metalCustomName
-                              : account.metalType}{" "}
-                            @ {money(account.pricePerUnit || 0)} / {account.metalUnit} •{" "}
-                            {account.valuationSource || "Manual"} • {formatLastUpdated(account.lastValuedAt)}
-                          </div>
-                        ) : null}
-                        {account.type === "Real Estate" && account.propertyAddress ? (
-                          <div style={{ color: "#8feaff", marginTop: 6, fontSize: 13 }}>
-                            {account.propertyType} • {account.propertyAddress}
-                          </div>
-                        ) : null}
-                        {account.type === "Real Estate" && account.propertyMarketValue ? (
-                          <div style={{ color: "#7bc7ff", marginTop: 4, fontSize: 12 }}>
-                            {account.equitySource === "Derived" ? "Derived" : "Manual"} equity • Market{" "}
-                            {money(account.propertyMarketValue)}
-                          </div>
-                        ) : null}
-                        {account.type === "Real Estate" && account.linkedLoanId ? (
-                          <div style={{ color: "#7bc7ff", marginTop: 4, fontSize: 12 }}>
-                            Linked loan:{" "}
-                            {loanAccounts.find((loanAccount) => loanAccount.id === account.linkedLoanId)?.name ||
-                              "Saved link"}
-                          </div>
-                        ) : null}
-                        {account.type === "Mortgages / Loans" ? (
-                          <div style={{ color: "#ffb6a0", marginTop: 6, fontSize: 13 }}>
-                            {account.loanCategory}
-                            {account.interestRate ? ` • ${account.interestRate}% APR` : ""}
-                            {account.monthlyPayment ? ` • ${account.monthlyPayment}/mo` : ""}
-                          </div>
-                        ) : null}
-                        {account.type === "Mortgages / Loans" && account.linkedPropertyId ? (
-                          <div style={{ color: "#ffc9bd", marginTop: 4, fontSize: 12 }}>
-                            Linked property:{" "}
-                            {realEstateAccounts.find(
-                              (propertyAccount) => propertyAccount.id === account.linkedPropertyId
-                            )?.name || "Saved link"}
-                          </div>
-                        ) : null}
                       </div>
                       <div
                         style={{
-                          color: "#00f59b",
-                          fontSize: 12,
+                          marginTop: 18,
+                          color: account.balance < 0 ? "#ff5d7a" : "#eaf3ff",
+                          fontSize: 28,
                           fontWeight: 900,
-                          textTransform: "uppercase",
                         }}
                       >
-                        {account.status}
+                        {account.balance < 0 ? "-" : ""}
+                        {money(Math.abs(account.balance))}
                       </div>
                     </div>
-                    <div
-                      style={{
-                        marginTop: 18,
-                        color: account.balance < 0 ? "#ff5d7a" : "#eaf3ff",
-                        fontSize: 28,
-                        fontWeight: 900,
-                      }}
-                    >
-                      {account.balance < 0 ? "-" : ""}
-                      {money(Math.abs(account.balance))}
-                    </div>
-                  </div>
-                ))}
+                  ))}
+                </div>
               </div>
-            </div>
-          );
-        })}
+            );
+          })
+        )}
       </section>
 
       {/* ── Add Account Modal ── */}

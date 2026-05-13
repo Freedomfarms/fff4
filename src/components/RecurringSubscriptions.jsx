@@ -639,7 +639,29 @@ export function RecurringSubscriptions({ accounts, subscriptions, setSubscriptio
             marginTop: 14,
           }}
         >
-          No subscriptions found. Add one above.
+          <div style={{ color: "white", fontSize: 24, fontWeight: 900 }}>
+            No recurring commitments tracked yet
+          </div>
+          <div style={{ marginTop: 10, lineHeight: 1.6 }}>
+            Add your subscriptions, insurance, memberships, or mortgage payments so Operations,
+            Forecast, and the Dashboard can see the fixed costs you carry every month.
+          </div>
+          <button
+            onClick={() => setShowAddForm(true)}
+            style={{
+              marginTop: 18,
+              background: "linear-gradient(90deg,#0077ff,#00d8ff)",
+              border: "1px solid rgba(0,216,255,.45)",
+              borderRadius: 10,
+              color: "white",
+              padding: "12px 18px",
+              cursor: "pointer",
+              fontWeight: 800,
+              boxShadow: "0 0 18px rgba(0,136,255,.28)",
+            }}
+          >
+            + Add First Subscription
+          </button>
         </div>
       ) : null}
 

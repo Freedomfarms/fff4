@@ -23,6 +23,130 @@ function parseManualAmount(value) {
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
+function formatDateTime(value) {
+  if (!value) return "Awaiting update";
+  return new Date(value).toLocaleString("en-US", {
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  });
+}
+
+function formatMoneyPerUnit(value, unitLabel) {
+  return `${money(value)}${unitLabel ? ` / ${unitLabel}` : ""}`;
+}
+
+function buildAccountProfile(account, accounts) {
+  if (!account) return null;
+
+  const linkedLoan = accounts.find((candidate) => candidate.id === account.linkedLoanId);
+  const linkedProperty = accounts.find((candidate) => candidate.id === account.linkedPropertyId);
+
+  const baseProfile = {
+    eyebrow: "Account Profile",
+    title: account.name,
+    subtitle: `${account.institution} • ${account.type}`,
+    highlights: [
+      { label: "Current Balance", value: money(account.balance) },
+      { label: "Status", value: account.status || "Manual" },
+    ],
+  };
+
+  if (account.type === "Crypto") {
+    return {
+      ...baseProfile,
+      highlights: [
+        ...baseProfile.highlights,
+        { label: "Asset", value: `${account.cryptoName} (${account.cryptoSymbol})` },
+        { label: "Quantity", value: `${account.quantity || 0}` },
+        { label: "Live Price", value: formatMoneyPerUnit(account.lastPriceUsd, account.cryptoSymbol) },
+        { label: "Updated", value: formatDateTime(account.lastPriceUpdatedAt) },
+      ],
+      note: "Quantity-based account. Value is derived from holdings x live market price.",
+    };
+  }
+
+  if (account.type === "Precious Metals") {
+    return {
+      ...baseProfile,
+      highlights: [
+        ...baseProfile.highlights,
+        {
+          label: "Metal",
+          value:
+            account.metalType === "Custom" && account.metalCustomName
+              ? account.metalCustomName
+              : account.metalType,
+        },
+        { label: "Quantity", value: `${account.quantity || 0} ${account.metalUnit}` },
+        {
+          label: "Valuation",
+          value: formatMoneyPerUnit(account.pricePerUnit, account.metalUnit),
+        },
+        { label: "Source", value: account.valuationSource || "Manual" },
+        { label: "Updated", value: formatDateTime(account.lastValuedAt) },
+      ],
+      note: "Metals accounts are valuation-based and don’t post transaction ledger activity.",
+    };
+  }
+
+  if (account.type === "Real Estate") {
+    return {
+      ...baseProfile,
+      highlights: [
+        ...baseProfile.highlights,
+        { label: "Property Type", value: account.propertyType || "Property" },
+        { label: "Address", value: account.propertyAddress || "Not set" },
+        {
+          label: "Market Value",
+          value: account.propertyMarketValue ? money(account.propertyMarketValue) : "Not set",
+        },
+        { label: "Equity Mode", value: account.equitySource || "Manual" },
+        { label: "Linked Loan", value: linkedLoan?.name || "Not linked" },
+        { label: "Updated", value: formatDateTime(account.lastValuedAt) },
+      ],
+      note: "Real estate accounts track equity, not cashflow. Link a loan and market value to derive equity automatically.",
+    };
+  }
+
+  if (account.type === "Mortgages / Loans") {
+    return {
+      ...baseProfile,
+      highlights: [
+        ...baseProfile.highlights,
+        { label: "Loan Type", value: account.loanCategory || "Loan" },
+        { label: "APR", value: account.interestRate ? `${account.interestRate}%` : "Not set" },
+        { label: "Monthly Payment", value: account.monthlyPayment || "Not set" },
+        { label: "Linked Property", value: linkedProperty?.name || "Not linked" },
+      ],
+      note: "Loans are liability records. Use the linked property field to automate real-estate equity.",
+    };
+  }
+
+  if (account.type === "Credit Card") {
+    return {
+      ...baseProfile,
+      highlights: [
+        ...baseProfile.highlights,
+        { label: "Posting Mode", value: "Transactional" },
+        { label: "Debt Treatment", value: "Included in True Cash" },
+      ],
+      note: "Credit cards post transactions and automatically reduce True Cash through the shared debt model.",
+    };
+  }
+
+  return {
+    ...baseProfile,
+    highlights: [
+      ...baseProfile.highlights,
+      { label: "Posting Mode", value: "Transactional" },
+      { label: "Ledger", value: "Supports manual and synced transactions" },
+    ],
+    note: "Cash and bank accounts feed the live transaction ledger and the shared True Cash calculation.",
+  };
+}
+
 export function TransactionsView({
   accounts,
   budgetRows,
@@ -66,6 +190,7 @@ export function TransactionsView({
     .filter((tx) => tx.amount > 0)
     .reduce((sum, tx) => sum + tx.amount, 0);
   const selectedCategory = manualForm.category || categoryOptions[0] || "Other";
+  const accountProfile = buildAccountProfile(selectedAccountRecord, accounts);
   const isSelectedNonTransactionalAccount = selectedAccountRecord
     ? !accountSupportsTransactions(selectedAccountRecord)
     : false;
@@ -414,49 +539,134 @@ export function TransactionsView({
 
       <div style={{ ...styles.panel, padding: 24 }}>
         {selectedAccount ? (
-          <div
-            style={{
-              marginBottom: 18,
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "space-between",
-              borderBottom: "1px solid rgba(0,136,255,.12)",
-              paddingBottom: 16,
-            }}
-          >
-            <div>
-              <div
-                style={{
-                  color: "#8feaff",
-                  fontSize: 12,
-                  textTransform: "uppercase",
-                  letterSpacing: 1.2,
-                }}
-              >
-                Selected Account
-              </div>
-              <div style={{ color: "white", fontSize: 26, fontWeight: 800, marginTop: 6 }}>
-                {selectedAccount}
-              </div>
-            </div>
-            <button
-              onClick={() => {
-                setSelectedAccount(null);
-                setActiveTab("Add Accounts");
-              }}
+          <>
+            <div
               style={{
-                background: "rgba(0,136,255,.12)",
-                border: "1px solid rgba(0,216,255,.28)",
-                color: "#d7ebff",
-                borderRadius: 8,
-                padding: "10px 14px",
-                cursor: "pointer",
-                fontWeight: 700,
+                marginBottom: 18,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                borderBottom: "1px solid rgba(0,136,255,.12)",
+                paddingBottom: 16,
               }}
             >
-              ← Back to Accounts
-            </button>
-          </div>
+              <div>
+                <div
+                  style={{
+                    color: "#8feaff",
+                    fontSize: 12,
+                    textTransform: "uppercase",
+                    letterSpacing: 1.2,
+                  }}
+                >
+                  Selected Account
+                </div>
+                <div style={{ color: "white", fontSize: 26, fontWeight: 800, marginTop: 6 }}>
+                  {selectedAccount}
+                </div>
+              </div>
+              <button
+                onClick={() => {
+                  setSelectedAccount(null);
+                  setActiveTab("Add Accounts");
+                }}
+                style={{
+                  background: "rgba(0,136,255,.12)",
+                  border: "1px solid rgba(0,216,255,.28)",
+                  color: "#d7ebff",
+                  borderRadius: 8,
+                  padding: "10px 14px",
+                  cursor: "pointer",
+                  fontWeight: 700,
+                }}
+              >
+                ← Back to Accounts
+              </button>
+            </div>
+
+            {accountProfile ? (
+              <div
+                style={{
+                  border: "1px solid rgba(0,136,255,.22)",
+                  borderRadius: 16,
+                  background: "rgba(3,17,32,.72)",
+                  padding: 20,
+                  marginBottom: 18,
+                  boxShadow: "inset 0 0 24px rgba(0,80,160,.08)",
+                }}
+              >
+                <div style={{ display: "flex", justifyContent: "space-between", gap: 20 }}>
+                  <div>
+                    <div
+                      style={{
+                        color: "#8feaff",
+                        fontSize: 12,
+                        textTransform: "uppercase",
+                        letterSpacing: 1,
+                        fontWeight: 800,
+                      }}
+                    >
+                      {accountProfile.eyebrow}
+                    </div>
+                    <div style={{ color: "white", fontSize: 26, fontWeight: 900, marginTop: 8 }}>
+                      {accountProfile.title}
+                    </div>
+                    <div style={{ color: "#8fb1d9", fontSize: 14, marginTop: 8 }}>
+                      {accountProfile.subtitle}
+                    </div>
+                  </div>
+                  <div
+                    style={{
+                      color: selectedAccountRecord.balance < 0 ? "#ff8fa3" : "#eaf3ff",
+                      fontSize: 28,
+                      fontWeight: 900,
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    {money(selectedAccountRecord.balance)}
+                  </div>
+                </div>
+
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
+                    gap: 14,
+                    marginTop: 18,
+                  }}
+                >
+                  {accountProfile.highlights.map((item) => (
+                    <div
+                      key={item.label}
+                      style={{
+                        border: "1px solid rgba(0,136,255,.14)",
+                        borderRadius: 12,
+                        background: "rgba(0,22,48,.36)",
+                        padding: "14px 16px",
+                      }}
+                    >
+                      <div
+                        style={{
+                          color: "#8fb1d9",
+                          fontSize: 11,
+                          textTransform: "uppercase",
+                          letterSpacing: 0.8,
+                          marginBottom: 8,
+                        }}
+                      >
+                        {item.label}
+                      </div>
+                      <div style={{ color: "white", fontSize: 15, fontWeight: 800 }}>{item.value}</div>
+                    </div>
+                  ))}
+                </div>
+
+                <div style={{ color: "#8ea8ca", fontSize: 13, lineHeight: 1.6, marginTop: 16 }}>
+                  {accountProfile.note}
+                </div>
+              </div>
+            ) : null}
+          </>
         ) : null}
         <div
           style={{
@@ -599,8 +809,10 @@ export function TransactionsView({
               }}
             >
               {selectedAccount
-                ? `No transactions have posted to ${selectedAccount} yet. Add one manually to keep the account balance and budgets in sync.`
-                : "No transactions are available yet."}
+                ? isSelectedNonTransactionalAccount
+                  ? `${selectedAccount} is a valuation-based account, so it does not keep a spending ledger here. Manage its value from Add Accounts.`
+                  : `No transactions have posted to ${selectedAccount} yet. Add one manually or sync the account to keep balances and budgets in sync.`
+                : "No transactions are available yet. Add a transactional account or connect Plaid to begin building the live ledger."}
             </div>
           )}
         </div>
