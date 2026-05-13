@@ -23,6 +23,9 @@ function roundCurrency(value) {
   return Number((Number(value) || 0).toFixed(2));
 }
 
+const LIQUID_ACCOUNT_TYPES = new Set(["Checking", "Savings", "Manual Cash"]);
+const INVESTMENT_ACCOUNT_TYPES = new Set(["Investment", "Crypto", "Precious Metals"]);
+
 function ForwardFreedomDashboard() {
   const [currentView, setCurrentView] = useState("landing");
   const [accounts, setAccounts] = useState(initialAccounts);
@@ -36,10 +39,7 @@ function ForwardFreedomDashboard() {
   const [activeRange, setActiveRange] = useState("ALL");
 
   const liquidCash = accounts
-    .filter(
-      (account) =>
-        account.type === "Checking" || account.type === "Savings" || account.type === "Manual Cash"
-    )
+    .filter((account) => LIQUID_ACCOUNT_TYPES.has(account.type))
     .reduce((sum, account) => sum + account.balance, 0);
 
   const creditCardDebt = Math.abs(
@@ -51,7 +51,7 @@ function ForwardFreedomDashboard() {
   const trueCash = liquidCash - creditCardDebt;
 
   const investmentTotal = accounts
-    .filter((account) => account.type === "Investment")
+    .filter((account) => INVESTMENT_ACCOUNT_TYPES.has(account.type))
     .reduce((sum, account) => sum + account.balance, 0);
 
   const retirementTotal = accounts
