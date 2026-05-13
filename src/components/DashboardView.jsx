@@ -83,6 +83,17 @@ export function DashboardView({
   };
   const linePath = buildLinePath(chart.points);
   const areaPath = buildAreaPath(chart.points);
+  const projectionStartPoint = projectionSchedule.length
+    ? {
+        x: chart.points[0][0],
+        y: chart.points[0][1],
+        date: `${chart.dates[0] || "Jan 1"} Projection Start`,
+        value: wholeDollars(parseMoney(chartValues.values[0] || chart.value)),
+        profit: 0,
+        adjustment: 0,
+        type: "projected",
+      }
+    : null;
   const projectedTrueCashPoints = projectionSchedule
     .filter((point) => point.type === "projected" && MONTH_END_X[point.month])
     .map((point) => ({
@@ -91,13 +102,16 @@ export function DashboardView({
       y: trueCashToChartY(point.value, chartMax),
       value: point.formattedValue,
     }));
+  const projectionLinePoints = projectionStartPoint
+    ? [projectionStartPoint, ...projectedTrueCashPoints]
+    : projectedTrueCashPoints;
   const projectionPath =
     projectedTrueCashPoints.length > 0
-      ? buildLinePath(projectedTrueCashPoints.map((point) => [point.x, point.y]))
+      ? buildLinePath(projectionLinePoints.map((point) => [point.x, point.y]))
       : "";
   const projectionAreaPath =
     projectedTrueCashPoints.length > 0
-      ? buildProjectionAreaPath(projectedTrueCashPoints.map((point) => [point.x, point.y]))
+      ? buildProjectionAreaPath(projectionLinePoints.map((point) => [point.x, point.y]))
       : "";
   const chartHoverPoints = chart.points.map((point, index) => {
     const labelIndex =
@@ -115,6 +129,7 @@ export function DashboardView({
   });
   const combinedHoverPoints = [
     ...chartHoverPoints,
+    ...(projectionStartPoint ? [projectionStartPoint] : []),
     ...projectedTrueCashPoints.map((point) => ({
       x: point.x,
       y: point.y,
@@ -375,6 +390,15 @@ export function DashboardView({
                   strokeWidth="3"
                   filter="url(#projectedTrueCashGlow)"
                 />
+                {projectionStartPoint ? (
+                  <circle
+                    cx={projectionStartPoint.x}
+                    cy={projectionStartPoint.y}
+                    r="4"
+                    fill="#ffd08a"
+                    filter="url(#projectedTrueCashGlow)"
+                  />
+                ) : null}
                 {projectedTrueCashPoints.map((point) => (
                   <circle
                     key={point.date}
