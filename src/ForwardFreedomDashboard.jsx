@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   budgetMonths,
   incomeStreamSeed,
@@ -9,6 +9,11 @@ import {
 } from "./data/constants.jsx";
 import { styles } from "./styles.js";
 import { money, parseMoney } from "./utils/format.js";
+import {
+  calculateCryptoBalance,
+  fetchCryptoQuotes,
+  isCryptoPriceStale,
+} from "./utils/cryptoPricing.js";
 import { AccountsView } from "./components/AccountsView.jsx";
 import { BudgetCommandCenter } from "./components/BudgetCommandCenter.jsx";
 import { DashboardView } from "./components/DashboardView.jsx";
@@ -23,8 +28,13 @@ function roundCurrency(value) {
   return Number((Number(value) || 0).toFixed(2));
 }
 
+function normalizeCryptoPrice(value) {
+  return Number((Number(value) || 0).toFixed(8));
+}
+
 const LIQUID_ACCOUNT_TYPES = new Set(["Checking", "Savings", "Manual Cash"]);
 const INVESTMENT_ACCOUNT_TYPES = new Set(["Investment", "Crypto", "Precious Metals"]);
+const CRYPTO_PRICE_SOURCE = "CoinGecko";
 
 function ForwardFreedomDashboard() {
   const [currentView, setCurrentView] = useState("landing");
@@ -156,6 +166,64 @@ function ForwardFreedomDashboard() {
     },
   ];
 
+  useEffect(() => {
+    const staleCryptoAccounts = accounts.filter(
+      (account) =>
+        account.type === "Crypto" &&
+        account.cryptoAssetId &&
+        isCryptoPriceStale(account.lastPriceUpdatedAt)
+    );
+
+    if (staleCryptoAccounts.length === 0) return;
+
+    let cancelled = false;
+    const uniqueAssetIds = [...new Set(staleCryptoAccounts.map((account) => account.cryptoAssetId))];
+
+    fetchCryptoQuotes(uniqueAssetIds)
+      .then((quotes) => {
+        if (cancelled || Object.keys(quotes).length === 0) return;
+
+        setAccounts((current) => {
+          let changed = false;
+
+          const nextAccounts = current.map((account) => {
+            if (account.type !== "Crypto" || !account.cryptoAssetId) return account;
+
+            const quote = quotes[account.cryptoAssetId];
+            if (!quote) return account;
+
+            const nextPriceUsd = normalizeCryptoPrice(quote.priceUsd);
+            const nextBalance = calculateCryptoBalance(account.quantity, nextPriceUsd);
+            const nextUpdatedAt = quote.lastUpdatedAt;
+
+            if (
+              account.lastPriceUsd === nextPriceUsd &&
+              account.balance === nextBalance &&
+              account.lastPriceUpdatedAt === nextUpdatedAt
+            ) {
+              return account;
+            }
+
+            changed = true;
+            return {
+              ...account,
+              lastPriceUsd: nextPriceUsd,
+              lastPriceUpdatedAt: nextUpdatedAt,
+              balance: nextBalance,
+              priceSource: CRYPTO_PRICE_SOURCE,
+            };
+          });
+
+          return changed ? nextAccounts : current;
+        });
+      })
+      .catch(() => {});
+
+    return () => {
+      cancelled = true;
+    };
+  }, [accounts]);
+
   const connectMockPlaidAccount = () => {
     const newAccountNumber = accounts.length + 1;
     const newAccount = {
@@ -194,7 +262,20 @@ function ForwardFreedomDashboard() {
     setActiveTab("Transactions");
   };
 
-  const addManualAccount = ({ name, type, institution, balance }) => {
+  const addManualAccount = ({
+    name,
+    type,
+    institution,
+    balance,
+    quantity,
+    cryptoAssetId,
+    cryptoName,
+    cryptoSymbol,
+    cryptoThumb,
+    lastPriceUsd,
+    lastPriceUpdatedAt,
+    priceSource,
+  }) => {
     const newAccount = {
       name,
       type,
@@ -202,6 +283,20 @@ function ForwardFreedomDashboard() {
       balance: roundCurrency(balance),
       status: "Manual",
     };
+
+    if (type === "Crypto" && cryptoAssetId) {
+      Object.assign(newAccount, {
+        quantity: Number(quantity) || 0,
+        cryptoAssetId,
+        cryptoName,
+        cryptoSymbol,
+        cryptoThumb,
+        lastPriceUsd: normalizeCryptoPrice(lastPriceUsd),
+        lastPriceUpdatedAt: Number(lastPriceUpdatedAt) || Date.now(),
+        priceSource: priceSource || CRYPTO_PRICE_SOURCE,
+      });
+    }
+
     setAccounts((current) => [...current, newAccount]);
     openAccountTransactions(name);
   };
@@ -225,6 +320,7 @@ function ForwardFreedomDashboard() {
     const amount = roundCurrency(transaction.amount);
 
     if (!targetAccount || !Number.isFinite(amount) || amount === 0) return false;
+    if (targetAccount.type === "Crypto") return false;
 
     setTransactions((current) => [
       {

@@ -1,6 +1,12 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { styles } from "../styles.js";
 import { money } from "../utils/format.js";
+import {
+  calculateCryptoBalance,
+  fetchCryptoQuotes,
+  normalizeCryptoQuantity,
+  searchCryptoAssets,
+} from "../utils/cryptoPricing.js";
 
 const accountGroups = [
   { title: "Checking", filter: (a) => a.type === "Checking" },
@@ -26,7 +32,7 @@ const ACCOUNT_TYPES = [
   "Manual Cash",
 ];
 
-const EMPTY_FORM = { name: "", type: "Checking", institution: "", balance: "" };
+const EMPTY_FORM = { name: "", type: "Checking", institution: "", balance: "", quantity: "" };
 
 function parseBalance(raw) {
   const str = String(raw).trim();
@@ -34,6 +40,39 @@ function parseBalance(raw) {
   const digits = str.replace(/[^0-9.]/g, "");
   const n = Number(digits);
   return isNeg ? -Math.abs(n) : n;
+}
+
+function formatCryptoSearchLabel(asset) {
+  return `${asset.name} (${asset.symbol})`;
+}
+
+function formatCryptoQuantity(quantity) {
+  return Number(quantity || 0).toLocaleString("en-US", { maximumFractionDigits: 8 });
+}
+
+function formatCryptoPrice(value) {
+  const price = Number(value) || 0;
+  if (price >= 1) {
+    return `$${price.toLocaleString("en-US", {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    })}`;
+  }
+
+  return `$${price.toLocaleString("en-US", {
+    minimumFractionDigits: 4,
+    maximumFractionDigits: 8,
+  })}`;
+}
+
+function formatLastUpdated(value) {
+  if (!value) return "Awaiting quote";
+  return new Date(value).toLocaleString("en-US", {
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  });
 }
 
 export function AccountsView({
@@ -44,30 +83,166 @@ export function AccountsView({
 }) {
   const [showModal, setShowModal] = useState(false);
   const [form, setForm] = useState(EMPTY_FORM);
+  const [cryptoSearchQuery, setCryptoSearchQuery] = useState("");
+  const [cryptoResults, setCryptoResults] = useState([]);
+  const [selectedCrypto, setSelectedCrypto] = useState(null);
+  const [selectedCryptoQuote, setSelectedCryptoQuote] = useState(null);
+  const [cryptoSearchError, setCryptoSearchError] = useState("");
+  const [cryptoQuoteError, setCryptoQuoteError] = useState("");
+  const [isSearchingCrypto, setIsSearchingCrypto] = useState(false);
+  const [isLoadingCryptoQuote, setIsLoadingCryptoQuote] = useState(false);
 
   const linkedBalance = accounts.reduce((sum, a) => sum + a.balance, 0);
   const update = (field, value) => setForm((f) => ({ ...f, [field]: value }));
+  const isCryptoAccount = form.type === "Crypto";
 
   const parsedBalance = parseBalance(form.balance);
+  const parsedQuantity = normalizeCryptoQuantity(form.quantity);
+  const derivedCryptoBalance = selectedCryptoQuote
+    ? calculateCryptoBalance(parsedQuantity, selectedCryptoQuote.priceUsd)
+    : 0;
   const canSubmit =
     form.name.trim().length > 0 &&
     form.type.length > 0 &&
-    form.balance.trim().length > 0 &&
-    Number.isFinite(parsedBalance);
+    (isCryptoAccount
+      ? selectedCrypto &&
+        form.quantity.trim().length > 0 &&
+        Number.isFinite(parsedQuantity) &&
+        parsedQuantity > 0 &&
+        selectedCryptoQuote
+      : form.balance.trim().length > 0 && Number.isFinite(parsedBalance));
+
+  useEffect(() => {
+    if (isCryptoAccount) return;
+    setCryptoSearchQuery("");
+    setCryptoResults([]);
+    setSelectedCrypto(null);
+    setSelectedCryptoQuote(null);
+    setCryptoSearchError("");
+    setCryptoQuoteError("");
+    setIsSearchingCrypto(false);
+    setIsLoadingCryptoQuote(false);
+  }, [isCryptoAccount]);
+
+  useEffect(() => {
+    if (!isCryptoAccount) return;
+    const trimmedQuery = cryptoSearchQuery.trim();
+    const selectedLabel = selectedCrypto ? formatCryptoSearchLabel(selectedCrypto) : "";
+
+    if (selectedCrypto && trimmedQuery === selectedLabel) {
+      setCryptoResults([]);
+      setCryptoSearchError("");
+      setIsSearchingCrypto(false);
+      return;
+    }
+
+    if (trimmedQuery.length < 2) {
+      setCryptoResults([]);
+      setCryptoSearchError("");
+      setIsSearchingCrypto(false);
+      return;
+    }
+
+    const controller = new AbortController();
+    const timeoutId = window.setTimeout(async () => {
+      setIsSearchingCrypto(true);
+      setCryptoSearchError("");
+      try {
+        const results = await searchCryptoAssets(trimmedQuery, { signal: controller.signal });
+        setCryptoResults(results);
+        if (results.length === 0) {
+          setCryptoSearchError("No matching crypto assets were found.");
+        }
+      } catch (error) {
+        if (error.name === "AbortError") return;
+        setCryptoSearchError("Unable to search crypto assets right now.");
+        setCryptoResults([]);
+      } finally {
+        setIsSearchingCrypto(false);
+      }
+    }, 250);
+
+    return () => {
+      controller.abort();
+      window.clearTimeout(timeoutId);
+    };
+  }, [cryptoSearchQuery, isCryptoAccount, selectedCrypto]);
+
+  useEffect(() => {
+    if (!selectedCrypto?.id) return;
+
+    const controller = new AbortController();
+    setIsLoadingCryptoQuote(true);
+    setCryptoQuoteError("");
+
+    fetchCryptoQuotes([selectedCrypto.id], { signal: controller.signal })
+      .then((quotes) => {
+        const nextQuote = quotes[selectedCrypto.id];
+        if (!nextQuote) {
+          setSelectedCryptoQuote(null);
+          setCryptoQuoteError("Price feed unavailable for the selected asset.");
+          return;
+        }
+
+        setSelectedCryptoQuote(nextQuote);
+      })
+      .catch((error) => {
+        if (error.name === "AbortError") return;
+        setSelectedCryptoQuote(null);
+        setCryptoQuoteError("Unable to load the latest crypto price right now.");
+      })
+      .finally(() => {
+        setIsLoadingCryptoQuote(false);
+      });
+
+    return () => controller.abort();
+  }, [selectedCrypto]);
 
   const openModal = () => {
     setForm(EMPTY_FORM);
+    setCryptoSearchQuery("");
+    setCryptoResults([]);
+    setSelectedCrypto(null);
+    setSelectedCryptoQuote(null);
+    setCryptoSearchError("");
+    setCryptoQuoteError("");
     setShowModal(true);
   };
 
   const closeModal = () => {
     setForm(EMPTY_FORM);
+    setCryptoSearchQuery("");
+    setCryptoResults([]);
+    setSelectedCrypto(null);
+    setSelectedCryptoQuote(null);
+    setCryptoSearchError("");
+    setCryptoQuoteError("");
     setShowModal(false);
   };
 
   const handleSubmit = (e) => {
     e.preventDefault();
     if (!canSubmit) return;
+
+    if (isCryptoAccount) {
+      addManualAccount({
+        name: form.name.trim(),
+        type: form.type,
+        institution: form.institution.trim() || "Crypto Wallet",
+        balance: derivedCryptoBalance,
+        quantity: parsedQuantity,
+        cryptoAssetId: selectedCrypto.id,
+        cryptoName: selectedCrypto.name,
+        cryptoSymbol: selectedCrypto.symbol,
+        cryptoThumb: selectedCrypto.thumb,
+        lastPriceUsd: selectedCryptoQuote.priceUsd,
+        lastPriceUpdatedAt: selectedCryptoQuote.lastUpdatedAt,
+        priceSource: "CoinGecko",
+      });
+      closeModal();
+      return;
+    }
+
     addManualAccount({
       name: form.name.trim(),
       type: form.type,
@@ -75,6 +250,30 @@ export function AccountsView({
       balance: parsedBalance,
     });
     closeModal();
+  };
+
+  const handleCryptoSearchChange = (value) => {
+    setCryptoSearchQuery(value);
+    setCryptoSearchError("");
+
+    if (selectedCrypto && value.trim() !== formatCryptoSearchLabel(selectedCrypto)) {
+      setSelectedCrypto(null);
+      setSelectedCryptoQuote(null);
+      setCryptoQuoteError("");
+    }
+  };
+
+  const chooseCryptoAsset = (asset) => {
+    setSelectedCrypto(asset);
+    setSelectedCryptoQuote(null);
+    setCryptoQuoteError("");
+    setCryptoResults([]);
+    setCryptoSearchQuery(formatCryptoSearchLabel(asset));
+    setForm((current) => ({
+      ...current,
+      name: current.name.trim() ? current.name : `${asset.symbol} Holdings`,
+      institution: current.institution.trim() ? current.institution : "Crypto Wallet",
+    }));
   };
 
   const inputStyle = {
@@ -287,6 +486,12 @@ export function AccountsView({
                         <div style={{ color: "#8fb1d9", marginTop: 6 }}>
                           {account.institution} • {account.type}
                         </div>
+                        {account.type === "Crypto" && account.cryptoSymbol ? (
+                          <div style={{ color: "#5fd6ff", marginTop: 6, fontSize: 13 }}>
+                            {formatCryptoQuantity(account.quantity)} {account.cryptoSymbol} @{" "}
+                            {formatCryptoPrice(account.lastPriceUsd || 0)} • {formatLastUpdated(account.lastPriceUpdatedAt)}
+                          </div>
+                        ) : null}
                       </div>
                       <div
                         style={{
@@ -399,7 +604,11 @@ export function AccountsView({
                 <input
                   type="text"
                   value={form.name}
-                  placeholder="e.g. Chase Checking, Home Safe, Cash Envelope"
+                  placeholder={
+                    isCryptoAccount
+                      ? "e.g. XRP Wallet, Coinbase XRP, Cold Storage"
+                      : "e.g. Chase Checking, Home Safe, Cash Envelope"
+                  }
                   onChange={(e) => update("name", e.target.value)}
                   style={inputStyle}
                   autoFocus
@@ -424,38 +633,193 @@ export function AccountsView({
                 </label>
 
                 <label style={labelStyle}>
-                  <span style={labelCapStyle}>Bank / Institution</span>
+                  <span style={labelCapStyle}>
+                    {isCryptoAccount ? "Wallet / Exchange" : "Bank / Institution"}
+                  </span>
                   <input
                     type="text"
                     value={form.institution}
-                    placeholder="Bank name or label"
+                    placeholder={isCryptoAccount ? "e.g. Coinbase, Ledger, Kraken" : "Bank name or label"}
                     onChange={(e) => update("institution", e.target.value)}
                     style={inputStyle}
                   />
                 </label>
               </div>
 
-              {/* Balance */}
-              <label style={labelStyle}>
-                <span style={labelCapStyle}>Current Balance</span>
-                <input
-                  type="text"
-                  value={form.balance}
-                  placeholder="e.g. 5000 or -1250 for debt"
-                  onChange={(e) => update("balance", e.target.value)}
-                  style={{
-                    ...inputStyle,
-                    color: form.balance.trim().startsWith("-")
-                      ? "#ff8fa3"
-                      : form.balance.trim().length > 0
-                        ? "#00f59b"
-                        : "#eaf3ff",
-                  }}
-                />
-                <span style={{ color: "#7294bb", fontSize: 12 }}>
-                  Enter a negative number for debt / credit card balances (e.g. -2400).
-                </span>
-              </label>
+              {isCryptoAccount ? (
+                <>
+                  <label style={labelStyle}>
+                    <span style={labelCapStyle}>Crypto Asset Search</span>
+                    <input
+                      type="text"
+                      value={cryptoSearchQuery}
+                      placeholder="Search by coin name or ticker, e.g. XRP or Ethereum"
+                      onChange={(e) => handleCryptoSearchChange(e.target.value)}
+                      style={inputStyle}
+                    />
+                    <span style={{ color: "#7294bb", fontSize: 12 }}>
+                      Select the exact asset so the account can refresh against the correct price feed.
+                    </span>
+                  </label>
+
+                  {cryptoSearchError ? (
+                    <div style={{ color: "#ff9a76", fontSize: 12 }}>{cryptoSearchError}</div>
+                  ) : null}
+
+                  {isSearchingCrypto ? (
+                    <div style={{ color: "#8feaff", fontSize: 12 }}>Searching live crypto market data…</div>
+                  ) : null}
+
+                  {cryptoResults.length > 0 ? (
+                    <div
+                      style={{
+                        border: "1px solid rgba(0,216,255,.18)",
+                        borderRadius: 12,
+                        background: "rgba(0,22,48,.4)",
+                        overflow: "hidden",
+                      }}
+                    >
+                      {cryptoResults.map((asset) => (
+                        <button
+                          key={asset.id}
+                          type="button"
+                          onClick={() => chooseCryptoAsset(asset)}
+                          style={{
+                            width: "100%",
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "space-between",
+                            gap: 12,
+                            padding: "12px 14px",
+                            background: "transparent",
+                            border: "none",
+                            borderBottom: "1px solid rgba(0,216,255,.08)",
+                            color: "#eaf3ff",
+                            cursor: "pointer",
+                            textAlign: "left",
+                          }}
+                        >
+                          <span style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                            {asset.thumb ? (
+                              <img
+                                src={asset.thumb}
+                                alt=""
+                                style={{ width: 22, height: 22, borderRadius: 999, flexShrink: 0 }}
+                              />
+                            ) : null}
+                            <span>
+                              <span style={{ fontWeight: 800 }}>{asset.name}</span>
+                              <span style={{ color: "#8fb1d9", marginLeft: 8 }}>
+                                {asset.symbol}
+                              </span>
+                            </span>
+                          </span>
+                          <span style={{ color: "#7294bb", fontSize: 12 }}>
+                            {asset.marketCapRank ? `Rank #${asset.marketCapRank}` : "Unranked"}
+                          </span>
+                        </button>
+                      ))}
+                    </div>
+                  ) : null}
+
+                  {selectedCrypto ? (
+                    <div
+                      style={{
+                        border: "1px solid rgba(0,216,255,.26)",
+                        borderRadius: 14,
+                        background: "rgba(0,30,70,.22)",
+                        padding: 16,
+                        display: "grid",
+                        gap: 10,
+                      }}
+                    >
+                      <div style={{ display: "flex", justifyContent: "space-between", gap: 14 }}>
+                        <div>
+                          <div style={{ color: "#8feaff", fontSize: 12, textTransform: "uppercase" }}>
+                            Selected Asset
+                          </div>
+                          <div style={{ color: "white", fontSize: 20, fontWeight: 900, marginTop: 6 }}>
+                            {selectedCrypto.name} ({selectedCrypto.symbol})
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setSelectedCrypto(null);
+                            setSelectedCryptoQuote(null);
+                            setCryptoQuoteError("");
+                            setCryptoSearchQuery("");
+                          }}
+                          style={{
+                            background: "rgba(0,136,255,.10)",
+                            border: "1px solid rgba(0,216,255,.24)",
+                            borderRadius: 8,
+                            color: "#8fb1d9",
+                            padding: "8px 12px",
+                            cursor: "pointer",
+                            fontWeight: 800,
+                          }}
+                        >
+                          Change
+                        </button>
+                      </div>
+
+                      <label style={labelStyle}>
+                        <span style={labelCapStyle}>Quantity Owned</span>
+                        <input
+                          type="text"
+                          value={form.quantity}
+                          placeholder="e.g. 5000"
+                          onChange={(e) => update("quantity", e.target.value)}
+                          style={inputStyle}
+                        />
+                      </label>
+
+                      <div style={{ color: "#d7ebff", fontSize: 13, lineHeight: 1.55 }}>
+                        {isLoadingCryptoQuote ? (
+                          <span style={{ color: "#8feaff" }}>Loading latest price…</span>
+                        ) : selectedCryptoQuote ? (
+                          <>
+                            Live price: <b>{formatCryptoPrice(selectedCryptoQuote.priceUsd)}</b> per{" "}
+                            {selectedCrypto.symbol}
+                            <br />
+                            Current account value: <b>{money(derivedCryptoBalance)}</b>
+                            <br />
+                            Last updated: <b>{formatLastUpdated(selectedCryptoQuote.lastUpdatedAt)}</b>
+                          </>
+                        ) : (
+                          <span style={{ color: "#7294bb" }}>Pick an asset to load its current price.</span>
+                        )}
+                      </div>
+
+                      {cryptoQuoteError ? (
+                        <div style={{ color: "#ff9a76", fontSize: 12 }}>{cryptoQuoteError}</div>
+                      ) : null}
+                    </div>
+                  ) : null}
+                </>
+              ) : (
+                <label style={labelStyle}>
+                  <span style={labelCapStyle}>Current Balance</span>
+                  <input
+                    type="text"
+                    value={form.balance}
+                    placeholder="e.g. 5000 or -1250 for debt"
+                    onChange={(e) => update("balance", e.target.value)}
+                    style={{
+                      ...inputStyle,
+                      color: form.balance.trim().startsWith("-")
+                        ? "#ff8fa3"
+                        : form.balance.trim().length > 0
+                          ? "#00f59b"
+                          : "#eaf3ff",
+                    }}
+                  />
+                  <span style={{ color: "#7294bb", fontSize: 12 }}>
+                    Enter a negative number for debt / credit card balances (e.g. -2400).
+                  </span>
+                </label>
+              )}
             </div>
 
             {/* Actions */}

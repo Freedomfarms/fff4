@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { transactionCategoryOptions } from "../data/constants.jsx";
 import { styles } from "../styles.js";
 import { money } from "../utils/format.js";
@@ -34,15 +34,22 @@ export function TransactionsView({
   deleteManualTransaction,
   updateTransactionCategory,
 }) {
+  const selectedAccountRecord = selectedAccount
+    ? accounts.find((account) => account.name === selectedAccount) || null
+    : null;
+  const transactionCapableAccounts = accounts.filter((account) => account.type !== "Crypto");
   const [manualForm, setManualForm] = useState({
     date: "2026-05-13",
     merchant: "",
-    account: selectedAccount || accounts[0]?.name || "",
+    account:
+      selectedAccountRecord?.type !== "Crypto"
+        ? selectedAccount || transactionCapableAccounts[0]?.name || ""
+        : transactionCapableAccounts[0]?.name || "",
     amount: "",
     category: "",
   });
   const [deleteTarget, setDeleteTarget] = useState(null);
-  const accountOptions = accounts.map((account) => account.name);
+  const accountOptions = transactionCapableAccounts.map((account) => account.name);
   const categoryOptions = Array.from(
     new Set([
       ...transactionCategoryOptions,
@@ -58,13 +65,30 @@ export function TransactionsView({
     .filter((tx) => tx.amount > 0)
     .reduce((sum, tx) => sum + tx.amount, 0);
   const selectedCategory = manualForm.category || categoryOptions[0] || "Other";
+  const isSelectedCryptoAccount = selectedAccountRecord?.type === "Crypto";
   const canAddManualTransaction =
+    !isSelectedCryptoAccount &&
     manualForm.date &&
     manualForm.merchant.trim() &&
     manualForm.account.trim() &&
     accountOptions.includes(manualForm.account) &&
     Number.isFinite(parseManualAmount(manualForm.amount)) &&
     parseManualAmount(manualForm.amount) !== 0;
+
+  useEffect(() => {
+    if (isSelectedCryptoAccount) return;
+
+    const nextDefaultAccount =
+      selectedAccountRecord?.type !== "Crypto"
+        ? selectedAccountRecord?.name
+        : transactionCapableAccounts[0]?.name || "";
+
+    setManualForm((current) =>
+      current.account === nextDefaultAccount || (current.account && !selectedAccount)
+        ? current
+        : { ...current, account: nextDefaultAccount }
+    );
+  }, [isSelectedCryptoAccount, selectedAccount, selectedAccountRecord, transactionCapableAccounts]);
 
   const updateManualForm = (field, value) => {
     setManualForm((current) => ({ ...current, [field]: value }));
@@ -181,63 +205,81 @@ export function TransactionsView({
         </div>
       </div>
 
-      <form
-        onSubmit={submitManualTransaction}
-        style={{
-          ...styles.panel,
-          padding: 22,
-          marginBottom: 18,
-          border: "1px solid rgba(255,159,28,.22)",
-          boxShadow: "inset 0 0 22px rgba(255,159,28,.06)",
-        }}
-      >
+      {isSelectedCryptoAccount ? (
         <div
           style={{
-            display: "flex",
-            justifyContent: "space-between",
-            alignItems: "center",
-            gap: 18,
+            ...styles.panel,
+            padding: 22,
             marginBottom: 18,
+            border: "1px solid rgba(0,216,255,.22)",
+            boxShadow: "inset 0 0 22px rgba(0,136,255,.06)",
           }}
         >
-          <div>
-            <div style={{ color: "white", fontSize: 20, fontWeight: 900 }}>
-              Manual Transaction Entry
-            </div>
-            <div style={{ color: "#8ea8ca", fontSize: 13, marginTop: 6 }}>
-              Add cash buys, offline credit cards, future payments, or backfilled transactions.
-            </div>
+          <div style={{ color: "white", fontSize: 20, fontWeight: 900 }}>Crypto Account Pricing</div>
+          <div style={{ color: "#8ea8ca", fontSize: 13, marginTop: 8, lineHeight: 1.6 }}>
+            Crypto accounts are quantity-based in this MVP. Their balance comes from the stored
+            holding quantity multiplied by the latest market price, so manual transaction entry is
+            disabled to keep the account value in sync with the live quote.
           </div>
-          <button
-            type="submit"
-            disabled={!canAddManualTransaction}
+        </div>
+      ) : (
+        <form
+          onSubmit={submitManualTransaction}
+          style={{
+            ...styles.panel,
+            padding: 22,
+            marginBottom: 18,
+            border: "1px solid rgba(255,159,28,.22)",
+            boxShadow: "inset 0 0 22px rgba(255,159,28,.06)",
+          }}
+        >
+          <div
             style={{
-              background: canAddManualTransaction
-                ? "linear-gradient(90deg,#ff9f1c,#ff6b1c)"
-                : "rgba(120,130,150,.18)",
-              border: canAddManualTransaction
-                ? "1px solid rgba(255,208,138,.55)"
-                : "1px solid rgba(160,175,200,.16)",
-              borderRadius: 10,
-              color: canAddManualTransaction ? "white" : "#7f93ad",
-              padding: "12px 18px",
-              fontWeight: 900,
-              cursor: canAddManualTransaction ? "pointer" : "not-allowed",
-              boxShadow: canAddManualTransaction ? "0 0 24px rgba(255,159,28,.28)" : "none",
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+              gap: 18,
+              marginBottom: 18,
             }}
           >
-            + Add Manual Transaction
-          </button>
-        </div>
+            <div>
+              <div style={{ color: "white", fontSize: 20, fontWeight: 900 }}>
+                Manual Transaction Entry
+              </div>
+              <div style={{ color: "#8ea8ca", fontSize: 13, marginTop: 6 }}>
+                Add cash buys, offline credit cards, future payments, or backfilled transactions.
+              </div>
+            </div>
+            <button
+              type="submit"
+              disabled={!canAddManualTransaction}
+              style={{
+                background: canAddManualTransaction
+                  ? "linear-gradient(90deg,#ff9f1c,#ff6b1c)"
+                  : "rgba(120,130,150,.18)",
+                border: canAddManualTransaction
+                  ? "1px solid rgba(255,208,138,.55)"
+                  : "1px solid rgba(160,175,200,.16)",
+                borderRadius: 10,
+                color: canAddManualTransaction ? "white" : "#7f93ad",
+                padding: "12px 18px",
+                fontWeight: 900,
+                cursor: canAddManualTransaction ? "pointer" : "not-allowed",
+                boxShadow: canAddManualTransaction ? "0 0 24px rgba(255,159,28,.28)" : "none",
+              }}
+            >
+              + Add Manual Transaction
+            </button>
+          </div>
 
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "140px minmax(105px,.7fr) minmax(115px,.7fr) 88px 118px",
-            gap: 10,
-            alignItems: "center",
-          }}
-        >
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "140px minmax(105px,.7fr) minmax(115px,.7fr) 88px 118px",
+              gap: 10,
+              alignItems: "center",
+            }}
+          >
           {[
             ["date", "Date", "date"],
             ["merchant", "Merchant", "text"],
@@ -281,41 +323,41 @@ export function TransactionsView({
             </label>
           ))}
 
-          <label style={{ display: "grid", gap: 7, minWidth: 0 }}>
-            <span
-              style={{
-                color: "#8fb1d9",
-                fontSize: 11,
-                textTransform: "uppercase",
-                letterSpacing: 0.8,
-                fontWeight: 900,
-              }}
-            >
-              Account
-            </span>
-            <select
-              value={manualForm.account}
-              onChange={(event) => updateManualForm("account", event.target.value)}
-              disabled={Boolean(selectedAccount)}
-              style={{
-                color: "#eaf3ff",
-                background: selectedAccount ? "rgba(0,136,255,.04)" : "rgba(0,136,255,.08)",
-                border: "1px solid rgba(0,216,255,.18)",
-                borderRadius: 8,
-                padding: "10px 11px",
-                outline: "none",
-                fontWeight: 800,
-                minWidth: 0,
-                opacity: selectedAccount ? 0.88 : 1,
-              }}
-            >
-              {accountOptions.map((accountName) => (
-                <option key={accountName} value={accountName} style={{ background: "#061224" }}>
-                  {accountName}
-                </option>
-              ))}
-            </select>
-          </label>
+            <label style={{ display: "grid", gap: 7, minWidth: 0 }}>
+              <span
+                style={{
+                  color: "#8fb1d9",
+                  fontSize: 11,
+                  textTransform: "uppercase",
+                  letterSpacing: 0.8,
+                  fontWeight: 900,
+                }}
+              >
+                Account
+              </span>
+              <select
+                value={manualForm.account}
+                onChange={(event) => updateManualForm("account", event.target.value)}
+                disabled={Boolean(selectedAccount)}
+                style={{
+                  color: "#eaf3ff",
+                  background: selectedAccount ? "rgba(0,136,255,.04)" : "rgba(0,136,255,.08)",
+                  border: "1px solid rgba(0,216,255,.18)",
+                  borderRadius: 8,
+                  padding: "10px 11px",
+                  outline: "none",
+                  fontWeight: 800,
+                  minWidth: 0,
+                  opacity: selectedAccount ? 0.88 : 1,
+                }}
+              >
+                {accountOptions.map((accountName) => (
+                  <option key={accountName} value={accountName} style={{ background: "#061224" }}>
+                    {accountName}
+                  </option>
+                ))}
+              </select>
+            </label>
 
           <label style={{ display: "grid", gap: 7, minWidth: 0 }}>
             <span
@@ -350,12 +392,13 @@ export function TransactionsView({
               ))}
             </select>
           </label>
-        </div>
-        <div style={{ color: "#8ea8ca", fontSize: 12, marginTop: 12 }}>
-          Use negative amounts for purchases/outflows and positive amounts for deposits, credits, or
-          reimbursements. Manual entries post directly into the selected account balance.
-        </div>
-      </form>
+          </div>
+          <div style={{ color: "#8ea8ca", fontSize: 12, marginTop: 12 }}>
+            Use negative amounts for purchases/outflows and positive amounts for deposits, credits, or
+            reimbursements. Manual entries post directly into the selected account balance.
+          </div>
+        </form>
+      )}
 
       <div style={{ ...styles.panel, padding: 24 }}>
         {selectedAccount ? (
