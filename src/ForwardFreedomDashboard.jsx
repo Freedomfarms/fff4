@@ -19,6 +19,10 @@ import { OperationsBoard } from "./components/OperationsBoard.jsx";
 import { RecurringSubscriptions } from "./components/RecurringSubscriptions.jsx";
 import { TransactionsView } from "./components/TransactionsView.jsx";
 
+function roundCurrency(value) {
+  return Number((Number(value) || 0).toFixed(2));
+}
+
 function ForwardFreedomDashboard() {
   const [currentView, setCurrentView] = useState("landing");
   const [accounts, setAccounts] = useState(initialAccounts);
@@ -195,59 +199,19 @@ function ForwardFreedomDashboard() {
       name,
       type,
       institution: institution || "Manual",
-      balance: Number(balance) || 0,
+      balance: roundCurrency(balance),
       status: "Manual",
     };
     setAccounts((current) => [...current, newAccount]);
     openAccountTransactions(name);
   };
 
-  const makeMockAccountTransactions = (accountName) =>
-    Array.from({ length: 15 }).map((_, index) => ({
-      date: `May ${15 - index}, 2026`,
-      merchant: [
-        "Amazon",
-        "Shell",
-        "Starbucks",
-        "Target",
-        "Costco",
-        "Apple",
-        "Payroll",
-        "Uber",
-        "Home Depot",
-        "Spotify",
-        "Netflix",
-        "CVS",
-        "Walmart",
-        "Delta",
-        "Chipotle",
-      ][index % 15],
-      category: [
-        "Shopping",
-        "Fuel",
-        "Food",
-        "Groceries",
-        "Technology",
-        "Income",
-        "Transportation",
-        "Home",
-        "Subscriptions",
-        "Health",
-        "Travel",
-      ][index % 11],
-      account: accountName,
-      amount: index % 4 === 0 ? 1800 + index * 25 : -(18 + index * 37.22),
-    }));
-
   const selectedTransactions = selectedAccount
     ? transactions.filter((tx) => tx.account === selectedAccount)
     : [];
 
   const visibleTransactions = selectedAccount
-    ? (selectedTransactions.length > 0
-        ? selectedTransactions
-        : makeMockAccountTransactions(selectedAccount)
-      ).slice(0, 15)
+    ? selectedTransactions.slice(0, 15)
     : transactions.slice(0, 15);
 
   const openAccountTransactions = (accountName) => {
@@ -256,26 +220,60 @@ function ForwardFreedomDashboard() {
   };
 
   const addManualTransaction = (transaction) => {
+    const targetAccountName = transaction.account.trim();
+    const targetAccount = accounts.find((account) => account.name === targetAccountName);
+    const amount = roundCurrency(transaction.amount);
+
+    if (!targetAccount || !Number.isFinite(amount) || amount === 0) return false;
+
     setTransactions((current) => [
       {
         ...transaction,
+        account: targetAccountName,
+        amount,
         id: `manual-tx-${Date.now()}-${current.length + 1}`,
         source: "manual",
       },
       ...current,
     ]);
+    setAccounts((current) =>
+      current.map((account) =>
+        account.name === targetAccountName
+          ? { ...account, balance: roundCurrency(account.balance + amount) }
+          : account
+      )
+    );
+    return true;
   };
 
   const deleteManualTransaction = (transactionId) => {
+    const transactionToDelete = transactions.find(
+      (transaction) => transaction.id === transactionId && transaction.source === "manual"
+    );
+
+    if (!transactionToDelete) return;
+
     setTransactions((current) =>
       current.filter(
         (transaction) => transaction.id !== transactionId || transaction.source !== "manual"
+      )
+    );
+    setAccounts((current) =>
+      current.map((account) =>
+        account.name === transactionToDelete.account
+          ? {
+              ...account,
+              balance: roundCurrency(account.balance - transactionToDelete.amount),
+            }
+          : account
       )
     );
   };
 
   const updateTransactionCategory = (transactionIndex, nextCategory) => {
     const transactionToUpdate = visibleTransactions[transactionIndex];
+
+    if (!transactionToUpdate) return;
 
     setTransactions((current) => {
       if (transactionToUpdate.id) {
@@ -298,7 +296,7 @@ function ForwardFreedomDashboard() {
         );
       }
 
-      return [{ ...transactionToUpdate, category: nextCategory }, ...current];
+      return current;
     });
   };
 

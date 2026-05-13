@@ -37,11 +37,12 @@ export function TransactionsView({
   const [manualForm, setManualForm] = useState({
     date: "2026-05-13",
     merchant: "",
-    account: selectedAccount || "Manual Entry",
+    account: selectedAccount || accounts[0]?.name || "",
     amount: "",
     category: "",
   });
   const [deleteTarget, setDeleteTarget] = useState(null);
+  const accountOptions = accounts.map((account) => account.name);
   const categoryOptions = Array.from(
     new Set([
       ...transactionCategoryOptions,
@@ -61,6 +62,7 @@ export function TransactionsView({
     manualForm.date &&
     manualForm.merchant.trim() &&
     manualForm.account.trim() &&
+    accountOptions.includes(manualForm.account) &&
     Number.isFinite(parseManualAmount(manualForm.amount)) &&
     parseManualAmount(manualForm.amount) !== 0;
 
@@ -72,13 +74,15 @@ export function TransactionsView({
     event.preventDefault();
     if (!canAddManualTransaction) return;
 
-    addManualTransaction({
+    const didAddTransaction = addManualTransaction({
       date: formatManualDate(manualForm.date),
       merchant: manualForm.merchant.trim(),
       category: selectedCategory,
       account: manualForm.account.trim(),
       amount: parseManualAmount(manualForm.amount),
     });
+    if (!didAddTransaction) return;
+
     setManualForm((current) => ({
       date: current.date,
       merchant: "",
@@ -229,7 +233,7 @@ export function TransactionsView({
         <div
           style={{
             display: "grid",
-            gridTemplateColumns: "140px minmax(105px,.62fr) minmax(100px,.62fr) 88px 118px",
+            gridTemplateColumns: "140px minmax(105px,.7fr) minmax(115px,.7fr) 88px 118px",
             gap: 10,
             alignItems: "center",
           }}
@@ -237,7 +241,6 @@ export function TransactionsView({
           {[
             ["date", "Date", "date"],
             ["merchant", "Merchant", "text"],
-            ["account", "Account", "text"],
             ["amount", "Amount", "text"],
           ].map(([field, label, type]) => (
             <label key={field} style={{ display: "grid", gap: 7, minWidth: 0 }}>
@@ -258,11 +261,9 @@ export function TransactionsView({
                 placeholder={
                   field === "amount"
                     ? "-45.00"
-                    : field === "account"
-                      ? "Cash / Offline Card"
-                      : field === "merchant"
-                        ? "Merchant name"
-                        : undefined
+                    : field === "merchant"
+                      ? "Merchant name"
+                      : undefined
                 }
                 onChange={(event) => updateManualForm(field, event.target.value)}
                 style={{
@@ -279,6 +280,42 @@ export function TransactionsView({
               />
             </label>
           ))}
+
+          <label style={{ display: "grid", gap: 7, minWidth: 0 }}>
+            <span
+              style={{
+                color: "#8fb1d9",
+                fontSize: 11,
+                textTransform: "uppercase",
+                letterSpacing: 0.8,
+                fontWeight: 900,
+              }}
+            >
+              Account
+            </span>
+            <select
+              value={manualForm.account}
+              onChange={(event) => updateManualForm("account", event.target.value)}
+              disabled={Boolean(selectedAccount)}
+              style={{
+                color: "#eaf3ff",
+                background: selectedAccount ? "rgba(0,136,255,.04)" : "rgba(0,136,255,.08)",
+                border: "1px solid rgba(0,216,255,.18)",
+                borderRadius: 8,
+                padding: "10px 11px",
+                outline: "none",
+                fontWeight: 800,
+                minWidth: 0,
+                opacity: selectedAccount ? 0.88 : 1,
+              }}
+            >
+              {accountOptions.map((accountName) => (
+                <option key={accountName} value={accountName} style={{ background: "#061224" }}>
+                  {accountName}
+                </option>
+              ))}
+            </select>
+          </label>
 
           <label style={{ display: "grid", gap: 7, minWidth: 0 }}>
             <span
@@ -316,7 +353,7 @@ export function TransactionsView({
         </div>
         <div style={{ color: "#8ea8ca", fontSize: 12, marginTop: 12 }}>
           Use negative amounts for purchases/outflows and positive amounts for deposits, credits, or
-          reimbursements.
+          reimbursements. Manual entries post directly into the selected account balance.
         </div>
       </form>
 
@@ -423,79 +460,94 @@ export function TransactionsView({
         </div>
 
         <div style={{ maxHeight: "62vh", overflowY: "auto", paddingRight: 4 }}>
-          {visibleTransactions.map((tx, index) => (
+          {visibleTransactions.length > 0 ? (
+            visibleTransactions.map((tx, index) => (
+              <div
+                key={`${tx.date}-${tx.merchant}-${tx.account}-${tx.amount}-${index}`}
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "140px 1.4fr 1fr 1fr 160px",
+                  alignItems: "center",
+                  padding: "12px 16px",
+                  borderBottom: "1px solid rgba(0,136,255,.08)",
+                  background: index % 2 === 0 ? "rgba(255,255,255,.01)" : "transparent",
+                }}
+              >
+                <div
+                  onDoubleClick={(event) => {
+                    if (tx.source !== "manual") return;
+                    event.preventDefault();
+                    event.stopPropagation();
+                    setDeleteTarget(tx);
+                  }}
+                  title={tx.source === "manual" ? "Double click to delete manual transaction" : ""}
+                  style={{
+                    color: tx.source === "manual" ? "#ffd08a" : "#8fb1d9",
+                    fontSize: 14,
+                    cursor: tx.source === "manual" ? "pointer" : "default",
+                  }}
+                >
+                  {tx.date}
+                </div>
+                <div style={{ color: "white", fontWeight: 700 }}>{tx.merchant}</div>
+                <select
+                  value={tx.category}
+                  onChange={(event) => updateTransactionCategory(index, event.target.value)}
+                  style={{
+                    color: "#b8d3f3",
+                    background: "rgba(0,136,255,.08)",
+                    border: "1px solid rgba(0,216,255,.18)",
+                    borderRadius: 8,
+                    padding: "8px 10px",
+                    outline: "none",
+                    width: "92%",
+                    cursor: "pointer",
+                    boxShadow: "inset 0 0 14px rgba(0,136,255,.08)",
+                  }}
+                >
+                  {categoryOptions.map((category) => (
+                    <option
+                      key={category}
+                      value={category}
+                      style={{ background: "#061224", color: "#eaf3ff" }}
+                    >
+                      {category}
+                    </option>
+                  ))}
+                  {!categoryOptions.includes(tx.category) ? (
+                    <option value={tx.category} style={{ background: "#061224", color: "#eaf3ff" }}>
+                      {tx.category}
+                    </option>
+                  ) : null}
+                </select>
+                <div style={{ color: "#7ebeff" }}>{tx.account}</div>
+                <div
+                  style={{
+                    textAlign: "right",
+                    color: tx.amount > 0 ? "#00f59b" : "#ff5d7a",
+                    fontWeight: 800,
+                    fontSize: 15,
+                  }}
+                >
+                  {tx.amount > 0 ? "+" : ""}$
+                  {Math.abs(tx.amount).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                </div>
+              </div>
+            ))
+          ) : (
             <div
-              key={`${tx.date}-${tx.merchant}-${tx.account}-${tx.amount}-${index}`}
               style={{
-                display: "grid",
-                gridTemplateColumns: "140px 1.4fr 1fr 1fr 160px",
-                alignItems: "center",
-                padding: "12px 16px",
-                borderBottom: "1px solid rgba(0,136,255,.08)",
-                background: index % 2 === 0 ? "rgba(255,255,255,.01)" : "transparent",
+                padding: "34px 16px",
+                color: "#8ea8ca",
+                textAlign: "center",
+                fontSize: 14,
               }}
             >
-              <div
-                onDoubleClick={(event) => {
-                  if (tx.source !== "manual") return;
-                  event.preventDefault();
-                  event.stopPropagation();
-                  setDeleteTarget(tx);
-                }}
-                title={tx.source === "manual" ? "Double click to delete manual transaction" : ""}
-                style={{
-                  color: tx.source === "manual" ? "#ffd08a" : "#8fb1d9",
-                  fontSize: 14,
-                  cursor: tx.source === "manual" ? "pointer" : "default",
-                }}
-              >
-                {tx.date}
-              </div>
-              <div style={{ color: "white", fontWeight: 700 }}>{tx.merchant}</div>
-              <select
-                value={tx.category}
-                onChange={(event) => updateTransactionCategory(index, event.target.value)}
-                style={{
-                  color: "#b8d3f3",
-                  background: "rgba(0,136,255,.08)",
-                  border: "1px solid rgba(0,216,255,.18)",
-                  borderRadius: 8,
-                  padding: "8px 10px",
-                  outline: "none",
-                  width: "92%",
-                  cursor: "pointer",
-                  boxShadow: "inset 0 0 14px rgba(0,136,255,.08)",
-                }}
-              >
-                {categoryOptions.map((category) => (
-                  <option
-                    key={category}
-                    value={category}
-                    style={{ background: "#061224", color: "#eaf3ff" }}
-                  >
-                    {category}
-                  </option>
-                ))}
-                {!categoryOptions.includes(tx.category) ? (
-                  <option value={tx.category} style={{ background: "#061224", color: "#eaf3ff" }}>
-                    {tx.category}
-                  </option>
-                ) : null}
-              </select>
-              <div style={{ color: "#7ebeff" }}>{tx.account}</div>
-              <div
-                style={{
-                  textAlign: "right",
-                  color: tx.amount > 0 ? "#00f59b" : "#ff5d7a",
-                  fontWeight: 800,
-                  fontSize: 15,
-                }}
-              >
-                {tx.amount > 0 ? "+" : ""}$
-                {Math.abs(tx.amount).toLocaleString(undefined, { minimumFractionDigits: 2 })}
-              </div>
+              {selectedAccount
+                ? `No transactions have posted to ${selectedAccount} yet. Add one manually to keep the account balance and budgets in sync.`
+                : "No transactions are available yet."}
             </div>
-          ))}
+          )}
         </div>
       </div>
 
