@@ -576,9 +576,7 @@ function ForwardFreedomDashboard() {
     ? transactions.filter((tx) => tx.account === selectedAccount)
     : [];
 
-  const visibleTransactions = selectedAccount
-    ? selectedTransactions.slice(0, 15)
-    : transactions.slice(0, 15);
+  const visibleTransactions = selectedAccount ? selectedTransactions : transactions;
 
   const openAccountTransactions = (accountName) => {
     setSelectedAccount(accountName);
@@ -637,8 +635,7 @@ function ForwardFreedomDashboard() {
     );
   };
 
-  const updateTransactionCategory = (transactionIndex, nextCategory) => {
-    const transactionToUpdate = visibleTransactions[transactionIndex];
+  const updateTransactionCategory = (transactionToUpdate, nextCategory) => {
 
     if (!transactionToUpdate) return;
 

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { transactionCategoryOptions } from "../data/constants.jsx";
 import { styles } from "../styles.js";
 import { money } from "../utils/format.js";
@@ -21,6 +21,14 @@ function formatManualDate(value) {
 function parseManualAmount(value) {
   const parsed = Number(String(value).replace(/[^0-9.-]/g, ""));
   return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function escapeCsvValue(value) {
+  const stringValue = String(value ?? "");
+  if (/[",\n]/.test(stringValue)) {
+    return `"${stringValue.replace(/"/g, '""')}"`;
+  }
+  return stringValue;
 }
 
 function formatDateTime(value) {
@@ -174,6 +182,14 @@ export function TransactionsView({
     category: "",
   });
   const [deleteTarget, setDeleteTarget] = useState(null);
+  const [showFilters, setShowFilters] = useState(false);
+  const [filters, setFilters] = useState({
+    search: "",
+    category: "All",
+    account: selectedAccount || "All",
+    direction: "All",
+    source: "All",
+  });
   const accountOptions = transactionCapableAccounts.map((account) => account.name);
   const categoryOptions = Array.from(
     new Set([
@@ -183,10 +199,31 @@ export function TransactionsView({
       ...visibleTransactions.map((tx) => tx.category).filter(Boolean),
     ])
   ).sort();
-  const monthlySpend = visibleTransactions
+  const filterAccountOptions = Array.from(
+    new Set(visibleTransactions.map((tx) => tx.account).filter(Boolean))
+  ).sort();
+  const filteredTransactions = useMemo(() => {
+    const search = filters.search.trim().toLowerCase();
+    return visibleTransactions.filter((tx) => {
+      if (filters.category !== "All" && tx.category !== filters.category) return false;
+      if (filters.account !== "All" && tx.account !== filters.account) return false;
+      if (filters.direction === "Outflow" && tx.amount >= 0) return false;
+      if (filters.direction === "Inflow" && tx.amount <= 0) return false;
+      if (filters.source === "Manual" && tx.source !== "manual") return false;
+      if (filters.source === "Synced" && tx.source === "manual") return false;
+      if (
+        search &&
+        !`${tx.date} ${tx.merchant} ${tx.category} ${tx.account}`.toLowerCase().includes(search)
+      ) {
+        return false;
+      }
+      return true;
+    });
+  }, [filters, visibleTransactions]);
+  const monthlySpend = filteredTransactions
     .filter((tx) => tx.amount < 0)
     .reduce((sum, tx) => sum + Math.abs(tx.amount), 0);
-  const cashInflow = visibleTransactions
+  const cashInflow = filteredTransactions
     .filter((tx) => tx.amount > 0)
     .reduce((sum, tx) => sum + tx.amount, 0);
   const selectedCategory = manualForm.category || categoryOptions[0] || "Other";
@@ -223,8 +260,29 @@ export function TransactionsView({
     transactionCapableAccounts,
   ]);
 
+  useEffect(() => {
+    setFilters((current) => ({
+      ...current,
+      account: selectedAccount || "All",
+    }));
+  }, [selectedAccount]);
+
   const updateManualForm = (field, value) => {
     setManualForm((current) => ({ ...current, [field]: value }));
+  };
+
+  const updateFilters = (field, value) => {
+    setFilters((current) => ({ ...current, [field]: value }));
+  };
+
+  const clearFilters = () => {
+    setFilters({
+      search: "",
+      category: "All",
+      account: selectedAccount || "All",
+      direction: "All",
+      source: "All",
+    });
   };
 
   const submitManualTransaction = (event) => {
@@ -247,6 +305,31 @@ export function TransactionsView({
       amount: "",
       category: current.category,
     }));
+  };
+
+  const exportFilteredTransactions = () => {
+    const rows = [
+      ["Date", "Merchant", "Category", "Account", "Amount", "Source"],
+      ...filteredTransactions.map((tx) => [
+        tx.date,
+        tx.merchant,
+        tx.category,
+        tx.account,
+        tx.amount,
+        tx.source === "manual" ? "Manual" : "Synced",
+      ]),
+    ];
+    const csv = rows.map((row) => row.map(escapeCsvValue).join(",")).join("\n");
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    const accountSlug = selectedAccount ? selectedAccount.replace(/\s+/g, "-").toLowerCase() : "all-accounts";
+    link.href = url;
+    link.download = `transactions-${accountSlug}.csv`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
   };
 
   return (
@@ -310,7 +393,7 @@ export function TransactionsView({
           {[
             ["Connected Accounts", String(accounts.length)],
             ["Monthly Spend", money(monthlySpend)],
-            ["Pending Transactions", "8"],
+            ["Visible Transactions", String(filteredTransactions.length)],
             ["Cash Inflow", money(cashInflow)],
           ].map((item) => (
             <div
@@ -681,29 +764,185 @@ export function TransactionsView({
           </div>
           <div style={{ display: "flex", gap: 12 }}>
             <button
+              onClick={() => setShowFilters((current) => !current)}
               style={{
                 background: "rgba(0,136,255,.12)",
                 border: "1px solid rgba(0,136,255,.28)",
                 color: "#d7ebff",
                 borderRadius: 8,
                 padding: "10px 14px",
+                cursor: "pointer",
               }}
             >
-              Filter
+              {showFilters ? "Hide Filters" : "Filter"}
             </button>
             <button
+              onClick={exportFilteredTransactions}
               style={{
                 background: "rgba(0,136,255,.12)",
                 border: "1px solid rgba(0,136,255,.28)",
                 color: "#d7ebff",
                 borderRadius: 8,
                 padding: "10px 14px",
+                cursor: "pointer",
               }}
             >
               Export
             </button>
           </div>
         </div>
+
+        {showFilters ? (
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "1.4fr 1fr 1fr 1fr 1fr auto",
+              gap: 10,
+              marginBottom: 18,
+              padding: 16,
+              borderRadius: 14,
+              border: "1px solid rgba(0,136,255,.18)",
+              background: "rgba(0,22,48,.36)",
+              alignItems: "end",
+            }}
+          >
+            <label style={{ display: "grid", gap: 7 }}>
+              <span style={{ color: "#8fb1d9", fontSize: 11, textTransform: "uppercase", letterSpacing: 0.8, fontWeight: 900 }}>
+                Search
+              </span>
+              <input
+                type="text"
+                value={filters.search}
+                onChange={(event) => updateFilters("search", event.target.value)}
+                placeholder="Merchant, category, account..."
+                style={{
+                  color: "#eaf3ff",
+                  background: "rgba(0,136,255,.08)",
+                  border: "1px solid rgba(0,216,255,.18)",
+                  borderRadius: 8,
+                  padding: "10px 11px",
+                  outline: "none",
+                  fontWeight: 700,
+                }}
+              />
+            </label>
+            <label style={{ display: "grid", gap: 7 }}>
+              <span style={{ color: "#8fb1d9", fontSize: 11, textTransform: "uppercase", letterSpacing: 0.8, fontWeight: 900 }}>
+                Category
+              </span>
+              <select
+                value={filters.category}
+                onChange={(event) => updateFilters("category", event.target.value)}
+                style={{
+                  color: "#eaf3ff",
+                  background: "rgba(0,136,255,.08)",
+                  border: "1px solid rgba(0,216,255,.18)",
+                  borderRadius: 8,
+                  padding: "10px 11px",
+                  outline: "none",
+                  fontWeight: 700,
+                }}
+              >
+                <option value="All" style={{ background: "#061224" }}>All</option>
+                {categoryOptions.map((category) => (
+                  <option key={category} value={category} style={{ background: "#061224" }}>
+                    {category}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label style={{ display: "grid", gap: 7 }}>
+              <span style={{ color: "#8fb1d9", fontSize: 11, textTransform: "uppercase", letterSpacing: 0.8, fontWeight: 900 }}>
+                Account
+              </span>
+              <select
+                value={filters.account}
+                onChange={(event) => updateFilters("account", event.target.value)}
+                disabled={Boolean(selectedAccount)}
+                style={{
+                  color: "#eaf3ff",
+                  background: "rgba(0,136,255,.08)",
+                  border: "1px solid rgba(0,216,255,.18)",
+                  borderRadius: 8,
+                  padding: "10px 11px",
+                  outline: "none",
+                  fontWeight: 700,
+                  opacity: selectedAccount ? 0.82 : 1,
+                }}
+              >
+                <option value="All" style={{ background: "#061224" }}>All</option>
+                {filterAccountOptions.map((accountName) => (
+                  <option key={accountName} value={accountName} style={{ background: "#061224" }}>
+                    {accountName}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label style={{ display: "grid", gap: 7 }}>
+              <span style={{ color: "#8fb1d9", fontSize: 11, textTransform: "uppercase", letterSpacing: 0.8, fontWeight: 900 }}>
+                Direction
+              </span>
+              <select
+                value={filters.direction}
+                onChange={(event) => updateFilters("direction", event.target.value)}
+                style={{
+                  color: "#eaf3ff",
+                  background: "rgba(0,136,255,.08)",
+                  border: "1px solid rgba(0,216,255,.18)",
+                  borderRadius: 8,
+                  padding: "10px 11px",
+                  outline: "none",
+                  fontWeight: 700,
+                }}
+              >
+                {["All", "Inflow", "Outflow"].map((option) => (
+                  <option key={option} value={option} style={{ background: "#061224" }}>
+                    {option}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label style={{ display: "grid", gap: 7 }}>
+              <span style={{ color: "#8fb1d9", fontSize: 11, textTransform: "uppercase", letterSpacing: 0.8, fontWeight: 900 }}>
+                Source
+              </span>
+              <select
+                value={filters.source}
+                onChange={(event) => updateFilters("source", event.target.value)}
+                style={{
+                  color: "#eaf3ff",
+                  background: "rgba(0,136,255,.08)",
+                  border: "1px solid rgba(0,216,255,.18)",
+                  borderRadius: 8,
+                  padding: "10px 11px",
+                  outline: "none",
+                  fontWeight: 700,
+                }}
+              >
+                {["All", "Synced", "Manual"].map((option) => (
+                  <option key={option} value={option} style={{ background: "#061224" }}>
+                    {option}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <button
+              type="button"
+              onClick={clearFilters}
+              style={{
+                background: "rgba(0,136,255,.10)",
+                border: "1px solid rgba(0,216,255,.20)",
+                borderRadius: 8,
+                color: "#d7ebff",
+                padding: "10px 14px",
+                cursor: "pointer",
+                fontWeight: 800,
+              }}
+            >
+              Clear
+            </button>
+          </div>
+        ) : null}
 
         <div
           style={{
@@ -726,9 +965,9 @@ export function TransactionsView({
 
         <div style={{ maxHeight: "62vh", overflowY: "auto", paddingRight: 4 }}>
           {visibleTransactions.length > 0 ? (
-            visibleTransactions.map((tx, index) => (
+            filteredTransactions.map((tx) => (
               <div
-                key={`${tx.date}-${tx.merchant}-${tx.account}-${tx.amount}-${index}`}
+                key={`${tx.id || tx.date}-${tx.merchant}-${tx.account}-${tx.amount}`}
                 style={{
                   display: "grid",
                   gridTemplateColumns: "140px 1.4fr 1fr 1fr 160px",
@@ -757,7 +996,7 @@ export function TransactionsView({
                 <div style={{ color: "white", fontWeight: 700 }}>{tx.merchant}</div>
                 <select
                   value={tx.category}
-                  onChange={(event) => updateTransactionCategory(index, event.target.value)}
+                  onChange={(event) => updateTransactionCategory(tx, event.target.value)}
                   style={{
                     color: "#b8d3f3",
                     background: "rgba(0,136,255,.08)",
@@ -811,8 +1050,12 @@ export function TransactionsView({
               {selectedAccount
                 ? isSelectedNonTransactionalAccount
                   ? `${selectedAccount} is a valuation-based account, so it does not keep a spending ledger here. Manage its value from Add Accounts.`
-                  : `No transactions have posted to ${selectedAccount} yet. Add one manually or sync the account to keep balances and budgets in sync.`
-                : "No transactions are available yet. Add a transactional account or connect Plaid to begin building the live ledger."}
+                  : filters.search || filters.category !== "All" || filters.account !== (selectedAccount || "All") || filters.direction !== "All" || filters.source !== "All"
+                    ? `No transactions in ${selectedAccount} match the current filters.`
+                    : `No transactions have posted to ${selectedAccount} yet. Add one manually or sync the account to keep balances and budgets in sync.`
+                : filters.search || filters.category !== "All" || filters.account !== "All" || filters.direction !== "All" || filters.source !== "All"
+                  ? "No transactions match the current filters."
+                  : "No transactions are available yet. Add a transactional account or connect Plaid to begin building the live ledger."}
             </div>
           )}
         </div>
