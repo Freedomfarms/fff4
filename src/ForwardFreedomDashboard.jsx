@@ -13,6 +13,11 @@ import {
   fetchCryptoQuotes,
   isCryptoPriceStale,
 } from "./utils/cryptoPricing.js";
+import {
+  fetchPreciousMetalsSpotPrices,
+  isPreciousMetalsPriceStale,
+  normalizePreciousMetalsPricePerUnit,
+} from "./utils/preciousMetalsPricing.js";
 import { AccountsView } from "./components/AccountsView.jsx";
 import { BudgetCommandCenter } from "./components/BudgetCommandCenter.jsx";
 import { DashboardView } from "./components/DashboardView.jsx";
@@ -321,6 +326,69 @@ function ForwardFreedomDashboard() {
   }, [accounts]);
 
   useEffect(() => {
+    const liveMetalsAccounts = accounts.filter(
+      (account) =>
+        account.type === "Precious Metals" &&
+        account.valuationSource === "Live Spot" &&
+        account.metalType !== "Custom" &&
+        isPreciousMetalsPriceStale(account.lastValuedAt)
+    );
+
+    if (liveMetalsAccounts.length === 0) return;
+
+    let cancelled = false;
+    fetchPreciousMetalsSpotPrices()
+      .then((quotes) => {
+        if (cancelled || Object.keys(quotes).length === 0) return;
+
+        setAccounts((current) => {
+          let changed = false;
+
+          const nextAccounts = current.map((account) => {
+            if (
+              account.type !== "Precious Metals" ||
+              account.valuationSource !== "Live Spot" ||
+              account.metalType === "Custom"
+            ) {
+              return account;
+            }
+
+            const quote = quotes[account.metalType];
+            if (!quote) return account;
+
+            const pricePerUnit = normalizePreciousMetalsPricePerUnit(
+              quote.pricePerTroyOunce,
+              account.metalUnit
+            );
+            const nextBalance = roundCurrency((Number(account.quantity) || 0) * pricePerUnit);
+            if (
+              account.pricePerUnit === pricePerUnit &&
+              account.balance === nextBalance &&
+              account.lastValuedAt === quote.updatedAt
+            ) {
+              return account;
+            }
+
+            changed = true;
+            return {
+              ...account,
+              pricePerUnit,
+              balance: nextBalance,
+              lastValuedAt: quote.updatedAt,
+            };
+          });
+
+          return changed ? nextAccounts : current;
+        });
+      })
+      .catch(() => {});
+
+    return () => {
+      cancelled = true;
+    };
+  }, [accounts]);
+
+  useEffect(() => {
     const staleCryptoAccounts = accounts.filter(
       (account) =>
         account.type === "Crypto" &&
@@ -608,6 +676,7 @@ function ForwardFreedomDashboard() {
               setActiveTab={setActiveTab}
               trueCash={trueCash}
               transactions={transactions}
+              subscriptions={subscriptions}
               incomeStreams={incomeStreams}
               budgetRows={budgetRows}
               projectionAdjustments={projectionAdjustments}
@@ -624,6 +693,7 @@ function ForwardFreedomDashboard() {
           ) : activeTab === "Operations Board" ? (
             <OperationsBoard
               budgetRows={budgetRows}
+              subscriptions={subscriptions}
               incomeStreams={incomeStreams}
               setIncomeStreams={setIncomeStreams}
               trueCash={trueCash}
@@ -653,12 +723,14 @@ function ForwardFreedomDashboard() {
           ) : activeTab === "Forecast Lab" ? (
             <ForecastLab
               trueCash={trueCash}
+              subscriptions={subscriptions}
               incomeStreams={incomeStreams}
               budgetRows={budgetRows}
               projectionAdjustments={projectionAdjustments}
             />
           ) : activeTab === "Recurring Subscriptions" ? (
             <RecurringSubscriptions
+              accounts={accounts}
               subscriptions={subscriptions}
               setSubscriptions={setSubscriptions}
             />

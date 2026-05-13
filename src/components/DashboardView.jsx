@@ -2,6 +2,7 @@ import { useState } from "react";
 import { budgetMonthNames, budgetMonths, chartSets } from "../data/constants.jsx";
 import { styles } from "../styles.js";
 import { buildAreaPath, buildLinePath, money, parseMoney, wholeDollars } from "../utils/format.js";
+import { buildSubscriptionOverview } from "../utils/subscriptions.js";
 import {
   buildSyncedTrueCashChart,
   buildTrueCashProjectionSchedule,
@@ -240,6 +241,7 @@ export function DashboardView({
   setActiveTab,
   trueCash,
   transactions,
+  subscriptions,
   incomeStreams,
   budgetRows,
   projectionAdjustments,
@@ -255,6 +257,7 @@ export function DashboardView({
     0
   );
   const monthlyBudgetReview = buildMonthlyBudgetReview(transactions, budgetRows);
+  const subscriptionOverview = buildSubscriptionOverview(subscriptions);
   const netWorthHistory = buildNetWorthHistory(metricSnapshots, netWorthHistoryRange);
   const chartValues = buildSyncedTrueCashChart(chartSets[activeRange], trueCash);
   const projectionSchedule = buildTrueCashProjectionSchedule({
@@ -1088,22 +1091,67 @@ export function DashboardView({
               <div style={{ color: "#8ea8ca", fontSize: 13, marginTop: 6 }}>
                 Budgeted plan vs actual spending across your highest-impact categories.
               </div>
+              {subscriptionOverview.activeCount > 0 ? (
+                <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginTop: 10 }}>
+                  <span
+                    style={{
+                      border: "1px solid rgba(0,216,255,.18)",
+                      borderRadius: 999,
+                      padding: "6px 10px",
+                      color: "#8feaff",
+                      fontSize: 12,
+                    }}
+                  >
+                    Auto-pay commitments {money(subscriptionOverview.activeMonthly)}/mo
+                  </span>
+                  {subscriptionOverview.topAccounts[0] ? (
+                    <span
+                      style={{
+                        border: "1px solid rgba(0,216,255,.18)",
+                        borderRadius: 999,
+                        padding: "6px 10px",
+                        color: "#b8d3f3",
+                        fontSize: 12,
+                      }}
+                    >
+                      Highest billed account: {subscriptionOverview.topAccounts[0].account}
+                    </span>
+                  ) : null}
+                </div>
+              ) : null}
             </div>
-            <button
-              onClick={() => setActiveTab("Budget Command Center")}
-              style={{
-                background: "rgba(0,136,255,.12)",
-                border: "1px solid rgba(0,216,255,.28)",
-                color: "#d7ebff",
-                borderRadius: 8,
-                padding: "10px 14px",
-                cursor: "pointer",
-                fontWeight: 700,
-                whiteSpace: "nowrap",
-              }}
-            >
-              Open Budget Center
-            </button>
+            <div style={{ display: "flex", gap: 10 }}>
+              <button
+                onClick={() => setActiveTab("Recurring Subscriptions")}
+                style={{
+                  background: "rgba(0,136,255,.08)",
+                  border: "1px solid rgba(0,216,255,.18)",
+                  color: "#d7ebff",
+                  borderRadius: 8,
+                  padding: "10px 14px",
+                  cursor: "pointer",
+                  fontWeight: 700,
+                  whiteSpace: "nowrap",
+                }}
+              >
+                Open Subscriptions
+              </button>
+              <button
+                onClick={() => setActiveTab("Budget Command Center")}
+                style={{
+                  background: "rgba(0,136,255,.12)",
+                  border: "1px solid rgba(0,216,255,.28)",
+                  color: "#d7ebff",
+                  borderRadius: 8,
+                  padding: "10px 14px",
+                  cursor: "pointer",
+                  fontWeight: 700,
+                  whiteSpace: "nowrap",
+                }}
+              >
+                Open Budget Center
+              </button>
+            </div>
           </div>
 
           <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 14 }}>

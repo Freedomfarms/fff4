@@ -2,6 +2,7 @@ import { useState } from "react";
 import { budgetMonths } from "../data/constants.jsx";
 import { styles } from "../styles.js";
 import { buildLinePath, buildAreaPath, money, parseMoney, wholeDollars } from "../utils/format.js";
+import { buildSubscriptionOverview } from "../utils/subscriptions.js";
 import { buildTrueCashProjectionSchedule } from "../utils/trueCashProjection.js";
 
 const CHART_W = 940;
@@ -84,11 +85,18 @@ function parseDollar(v) {
   return Number.isFinite(n) ? n : 0;
 }
 
-export function ForecastLab({ trueCash, incomeStreams, budgetRows, projectionAdjustments }) {
+export function ForecastLab({
+  trueCash,
+  subscriptions,
+  incomeStreams,
+  budgetRows,
+  projectionAdjustments,
+}) {
   const [extraIncomeRaw, setExtraIncomeRaw] = useState("0");
   const [savedSpendingRaw, setSavedSpendingRaw] = useState("0");
   const [scenarioName, setScenarioName] = useState("My Scenario");
   const [hoveredMonth, setHoveredMonth] = useState(null);
+  const subscriptionOverview = buildSubscriptionOverview(subscriptions);
 
   const extraIncome = parseDollar(extraIncomeRaw);
   const savedSpending = parseDollar(savedSpendingRaw);
@@ -284,6 +292,13 @@ export function ForecastLab({ trueCash, incomeStreams, budgetRows, projectionAdj
           Extra income and spending reduction are added to each month in your plan. Adjustments use
           your existing Operations Board income streams and budget as the base.
         </div>
+        {subscriptionOverview.activeCount > 0 ? (
+          <div style={{ marginTop: 12, color: "#8feaff", fontSize: 12 }}>
+            Active recurring commitments: {money(subscriptionOverview.activeMonthly)}/month (
+            {money(subscriptionOverview.yearlyCommitment)} annualized) across{" "}
+            {subscriptionOverview.activeCount} subscriptions.
+          </div>
+        ) : null}
       </div>
 
       {/* Summary Tiles */}

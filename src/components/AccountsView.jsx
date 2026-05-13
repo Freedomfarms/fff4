@@ -14,6 +14,10 @@ import {
   normalizeCryptoQuantity,
   searchCryptoAssets,
 } from "../utils/cryptoPricing.js";
+import {
+  fetchPreciousMetalsSpotPrices,
+  normalizePreciousMetalsPricePerUnit,
+} from "../utils/preciousMetalsPricing.js";
 
 const EMPTY_FORM = {
   name: "",
@@ -25,6 +29,7 @@ const EMPTY_FORM = {
   metalCustomName: "",
   metalUnit: "oz",
   pricePerUnit: "",
+  valuationSource: "Manual",
   propertyAddress: "",
   propertyType: "Primary Residence",
   propertyMarketValue: "",
@@ -92,6 +97,9 @@ export function AccountsView({
   const [cryptoQuoteError, setCryptoQuoteError] = useState("");
   const [isSearchingCrypto, setIsSearchingCrypto] = useState(false);
   const [isLoadingCryptoQuote, setIsLoadingCryptoQuote] = useState(false);
+  const [metalsQuote, setMetalsQuote] = useState(null);
+  const [metalsQuoteError, setMetalsQuoteError] = useState("");
+  const [isLoadingMetalsQuote, setIsLoadingMetalsQuote] = useState(false);
 
   const linkedBalance = accounts.reduce((sum, a) => sum + a.balance, 0);
   const update = (field, value) => setForm((f) => ({ ...f, [field]: value }));
@@ -113,7 +121,7 @@ export function AccountsView({
     : 0;
   const derivedPreciousMetalsBalance = calculatePreciousMetalsBalance(
     parsedQuantity,
-    parsedPricePerUnit
+    form.valuationSource === "Live Spot" && metalsQuote ? metalsQuote.pricePerUnit : parsedPricePerUnit
   );
   const canDeriveRealEstateEquity = Boolean(form.linkedLoanId) && parsedPropertyMarketValue > 0;
   const derivedRealEstateBalance = canDeriveRealEstateEquity
@@ -132,9 +140,11 @@ export function AccountsView({
         ? form.quantity.trim().length > 0 &&
           Number.isFinite(parsedQuantity) &&
           parsedQuantity > 0 &&
-          form.pricePerUnit.trim().length > 0 &&
-          Number.isFinite(parsedPricePerUnit) &&
-          parsedPricePerUnit > 0
+          (form.valuationSource === "Live Spot"
+            ? Boolean(metalsQuote)
+            : form.pricePerUnit.trim().length > 0 &&
+              Number.isFinite(parsedPricePerUnit) &&
+              parsedPricePerUnit > 0)
       : isRealEstateAccount
         ? canDeriveRealEstateEquity || (form.balance.trim().length > 0 && Number.isFinite(parsedBalance))
       : form.balance.trim().length > 0 && Number.isFinite(parsedBalance));
@@ -150,6 +160,60 @@ export function AccountsView({
     setIsSearchingCrypto(false);
     setIsLoadingCryptoQuote(false);
   }, [isCryptoAccount]);
+
+  useEffect(() => {
+    if (!isPreciousMetalsAccount) {
+      setMetalsQuote(null);
+      setMetalsQuoteError("");
+      setIsLoadingMetalsQuote(false);
+      return;
+    }
+
+    if (form.valuationSource !== "Live Spot" || form.metalType === "Custom") {
+      setMetalsQuote(null);
+      setMetalsQuoteError("");
+      setIsLoadingMetalsQuote(false);
+      return;
+    }
+
+    const controller = new AbortController();
+    setIsLoadingMetalsQuote(true);
+    setMetalsQuoteError("");
+
+    fetchPreciousMetalsSpotPrices({ signal: controller.signal })
+      .then((quotes) => {
+        const quote = quotes[form.metalType];
+        if (!quote) {
+          setMetalsQuote(null);
+          setMetalsQuoteError("Live spot pricing is unavailable for the selected metal.");
+          return;
+        }
+
+        setMetalsQuote({
+          ...quote,
+          pricePerUnit: normalizePreciousMetalsPricePerUnit(
+            quote.pricePerTroyOunce,
+            form.metalUnit
+          ),
+        });
+      })
+      .catch((error) => {
+        if (error.name === "AbortError") return;
+        setMetalsQuote(null);
+        setMetalsQuoteError("Unable to load live precious metals pricing right now.");
+      })
+      .finally(() => {
+        setIsLoadingMetalsQuote(false);
+      });
+
+    return () => controller.abort();
+  }, [form.metalType, form.metalUnit, form.valuationSource, isPreciousMetalsAccount]);
+
+  useEffect(() => {
+    if (form.metalType === "Custom" && form.valuationSource === "Live Spot") {
+      setForm((current) => ({ ...current, valuationSource: "Manual" }));
+    }
+  }, [form.metalType, form.valuationSource]);
 
   useEffect(() => {
     if (!isCryptoAccount) return;
@@ -280,9 +344,12 @@ export function AccountsView({
         metalCustomName: form.metalCustomName.trim(),
         metalUnit: form.metalUnit,
         quantity: parsedQuantity,
-        pricePerUnit: parsedPricePerUnit,
-        valuationSource: "Manual",
-        lastValuedAt: Date.now(),
+        pricePerUnit:
+          form.valuationSource === "Live Spot" && metalsQuote
+            ? metalsQuote.pricePerUnit
+            : parsedPricePerUnit,
+        valuationSource: form.valuationSource,
+        lastValuedAt: metalsQuote?.updatedAt || Date.now(),
       });
       closeModal();
       return;
@@ -553,7 +620,7 @@ export function AccountsView({
                               ? account.metalCustomName
                               : account.metalType}{" "}
                             @ {money(account.pricePerUnit || 0)} / {account.metalUnit} •{" "}
-                            {formatLastUpdated(account.lastValuedAt)}
+                            {account.valuationSource || "Manual"} • {formatLastUpdated(account.lastValuedAt)}
                           </div>
                         ) : null}
                         {account.type === "Real Estate" && account.propertyAddress ? (
@@ -949,6 +1016,24 @@ export function AccountsView({
                     </label>
                   </div>
 
+                  <label style={labelStyle}>
+                    <span style={labelCapStyle}>Valuation Source</span>
+                    <select
+                      value={form.valuationSource}
+                      onChange={(e) => update("valuationSource", e.target.value)}
+                      style={inputStyle}
+                    >
+                      <option value="Manual" style={{ background: "#061224" }}>
+                        Manual
+                      </option>
+                      {form.metalType !== "Custom" ? (
+                        <option value="Live Spot" style={{ background: "#061224" }}>
+                          Live Spot
+                        </option>
+                      ) : null}
+                    </select>
+                  </label>
+
                   {form.metalType === "Custom" ? (
                     <label style={labelStyle}>
                       <span style={labelCapStyle}>Custom Metal Name</span>
@@ -978,17 +1063,42 @@ export function AccountsView({
                       <span style={labelCapStyle}>Price Per {form.metalUnit.toUpperCase()}</span>
                       <input
                         type="text"
-                        value={form.pricePerUnit}
+                        value={
+                          form.valuationSource === "Live Spot" && metalsQuote
+                            ? money(metalsQuote.pricePerUnit)
+                            : form.pricePerUnit
+                        }
                         placeholder="e.g. 2350"
                         onChange={(e) => update("pricePerUnit", e.target.value)}
-                        style={inputStyle}
+                        disabled={form.valuationSource === "Live Spot"}
+                        style={{
+                          ...inputStyle,
+                          opacity: form.valuationSource === "Live Spot" ? 0.82 : 1,
+                        }}
                       />
                     </label>
                   </div>
 
                   <div style={{ color: "#d7ebff", fontSize: 13, lineHeight: 1.55 }}>
-                    Manual valuation: <b>{money(derivedPreciousMetalsBalance)}</b>
+                    {isLoadingMetalsQuote ? (
+                      <span style={{ color: "#8feaff" }}>Loading live spot price…</span>
+                    ) : (
+                      <>
+                        {form.valuationSource === "Live Spot" ? "Live spot valuation" : "Manual valuation"}:{" "}
+                        <b>{money(derivedPreciousMetalsBalance)}</b>
+                        {metalsQuote ? (
+                          <>
+                            <br />
+                            Spot source: <b>{metalsQuote.source}</b> • Updated{" "}
+                            <b>{formatLastUpdated(metalsQuote.updatedAt)}</b>
+                          </>
+                        ) : null}
+                      </>
+                    )}
                   </div>
+                  {metalsQuoteError ? (
+                    <div style={{ color: "#ff9a76", fontSize: 12 }}>{metalsQuoteError}</div>
+                  ) : null}
                 </>
               ) : isRealEstateAccount ? (
                 <>

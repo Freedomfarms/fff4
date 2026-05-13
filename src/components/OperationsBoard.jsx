@@ -2,6 +2,7 @@ import { useState } from "react";
 import { styles } from "../styles.js";
 import { money, parseMoney, wholeDollars } from "../utils/format.js";
 import { budgetMonths, chartSets, yearlyOpsData } from "../data/constants.jsx";
+import { buildSubscriptionMonthlySeries, buildSubscriptionOverview } from "../utils/subscriptions.js";
 import {
   buildSyncedTrueCashChart,
   buildTrueCashProjectionSchedule,
@@ -24,6 +25,7 @@ function normalizeAdjustmentInput(value) {
 
 export function OperationsBoard({
   budgetRows,
+  subscriptions,
   incomeStreams,
   setIncomeStreams,
   trueCash,
@@ -101,6 +103,8 @@ export function OperationsBoard({
   const yearlyIncome = dynamicYearlyOpsData.reduce((sum, month) => sum + month.income, 0);
   const yearlyBudget = dynamicYearlyOpsData.reduce((sum, month) => sum + month.budget, 0);
   const yearlySurplus = yearlyIncome - yearlyBudget;
+  const subscriptionSeries = buildSubscriptionMonthlySeries(subscriptions);
+  const subscriptionOverview = buildSubscriptionOverview(subscriptions);
   const maxValue = Math.max(
     ...dynamicYearlyOpsData.flatMap((month) => [month.income, month.budget]),
     1
@@ -166,7 +170,7 @@ export function OperationsBoard({
       <section
         style={{
           display: "grid",
-          gridTemplateColumns: "repeat(4, 1fr)",
+          gridTemplateColumns: "repeat(5, 1fr)",
           gap: 16,
           marginBottom: 18,
         }}
@@ -175,6 +179,12 @@ export function OperationsBoard({
           ["Total Income", money(yearlyIncome), "#00f59b"],
           ["Total Budget", money(yearlyBudget), "#00d8ff"],
           ["Yearly Profit", money(yearlySurplus), yearlySurplus >= 0 ? "#00f59b" : "#ff5d7a"],
+          [
+            "Recurring Commitments",
+            money(subscriptionOverview.activeMonthly),
+            "#ffb65d",
+            `${money(subscriptionOverview.yearlyCommitment)} annualized`,
+          ],
         ].map((item) => (
           <div key={item[0]} style={{ ...styles.panel, padding: 20 }}>
             <div
@@ -198,6 +208,9 @@ export function OperationsBoard({
             >
               {item[1]}
             </div>
+            {item[3] ? (
+              <div style={{ color: "#8ea8ca", fontSize: 12, marginTop: 10 }}>{item[3]}</div>
+            ) : null}
           </div>
         ))}
 
@@ -805,6 +818,12 @@ export function OperationsBoard({
                 color: "#00d8ff",
                 values: dynamicYearlyOpsData.map((month) => month.baseBudget),
                 total: dynamicYearlyOpsData.reduce((sum, month) => sum + month.baseBudget, 0),
+              },
+              {
+                label: "Subscriptions",
+                color: "#ffb65d",
+                values: subscriptionSeries.map((row) => row.total),
+                total: subscriptionSeries.reduce((sum, row) => sum + row.total, 0),
               },
             ].map((row) => (
               <div
