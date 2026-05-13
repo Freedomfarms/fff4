@@ -170,30 +170,6 @@ function ForwardFreedomDashboard() {
     },
   ];
 
-  const breakdownMax = Math.max(liquidCash, creditCardDebt, investmentTotal, retirementTotal, 1);
-  const bpct = (v) => `${Math.round((v / breakdownMax) * 100)}%`;
-
-  const dynamicBreakdown = [
-    {
-      label: "Liquid Cash",
-      value: money(liquidCash),
-      width: bpct(liquidCash),
-      color: "#138bff",
-    },
-    {
-      label: "Credit Card Debt",
-      value: `-${money(creditCardDebt)}`,
-      width: bpct(creditCardDebt),
-      color: "#ff244d",
-    },
-    {
-      label: "Investments",
-      value: money(investmentTotal),
-      width: bpct(investmentTotal),
-      color: "#00d8ff",
-    },
-  ];
-
   useEffect(() => {
     const staleCryptoAccounts = accounts.filter(
       (account) =>
@@ -448,7 +424,6 @@ function ForwardFreedomDashboard() {
               projectionAdjustments={projectionAdjustments}
               dynamicMetrics={dynamicMetrics}
               dynamicAllocations={dynamicAllocations}
-              dynamicBreakdown={dynamicBreakdown}
             />
           ) : activeTab === "Budget Command Center" ? (
             <BudgetCommandCenter

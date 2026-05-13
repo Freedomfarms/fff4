@@ -80,10 +80,17 @@ export function DashboardView({
   projectionAdjustments,
   dynamicMetrics,
   dynamicAllocations,
-  dynamicBreakdown,
 }) {
   const [hoverState, setHoverState] = useState(null);
   const allocationGradient = buildAllocationGradient(dynamicAllocations);
+  const allocationTotal = dynamicAllocations.reduce(
+    (sum, item) => sum + Number(item.valueNumber || 0),
+    0
+  );
+  const rankedAllocations = [...dynamicAllocations]
+    .filter((item) => Number(item.valueNumber || 0) > 0)
+    .sort((a, b) => Number(b.valueNumber || 0) - Number(a.valueNumber || 0));
+  const largestAllocation = rankedAllocations[0] || null;
   const chartValues = buildSyncedTrueCashChart(chartSets[activeRange], trueCash);
   const projectionSchedule = buildTrueCashProjectionSchedule({
     chart: chartValues,
@@ -663,22 +670,59 @@ export function DashboardView({
               marginBottom: 20,
             }}
           >
-            Asset Allocation <InfoDot />
+            Net Worth Breakdown <InfoDot />
           </div>
-          <div style={{ display: "flex", alignItems: "center", gap: 38 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 30 }}>
             <div
               style={{
-                width: 144,
-                height: 144,
+                position: "relative",
+                width: 168,
+                height: 168,
                 borderRadius: 999,
                 background: allocationGradient,
-                padding: 26,
+                padding: 28,
                 boxShadow: "0 0 35px rgba(0,174,255,.45)",
+                flexShrink: 0,
               }}
             >
               <div
                 style={{ width: "100%", height: "100%", borderRadius: 999, background: "#031120" }}
               />
+              <div
+                style={{
+                  position: "absolute",
+                  inset: 0,
+                  display: "flex",
+                  flexDirection: "column",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  textAlign: "center",
+                  pointerEvents: "none",
+                }}
+              >
+                <div
+                  style={{
+                    color: "#8fb1d9",
+                    fontSize: 11,
+                    textTransform: "uppercase",
+                    letterSpacing: 1,
+                    fontWeight: 800,
+                  }}
+                >
+                  Total Net Worth
+                </div>
+                <div
+                  style={{
+                    color: "white",
+                    fontSize: 21,
+                    fontWeight: 900,
+                    marginTop: 8,
+                    lineHeight: 1.15,
+                  }}
+                >
+                  {wholeDollars(allocationTotal)}
+                </div>
+              </div>
             </div>
             <div style={{ flex: 1, fontSize: 14 }}>
               {dynamicAllocations.map((item) => (
@@ -686,12 +730,14 @@ export function DashboardView({
                   key={item.name}
                   style={{
                     display: "grid",
-                    gridTemplateColumns: "1fr auto auto",
-                    gap: 28,
-                    marginBottom: 19,
+                    gridTemplateColumns: "minmax(0, 1fr) 116px 62px",
+                    gap: 18,
+                    marginBottom: 17,
+                    alignItems: "center",
+                    fontVariantNumeric: "tabular-nums",
                   }}
                 >
-                  <span>
+                  <span style={{ minWidth: 0 }}>
                     <b
                       style={{
                         display: "inline-block",
@@ -704,8 +750,8 @@ export function DashboardView({
                     />
                     {item.name}
                   </span>
-                  <span>{item.amount}</span>
-                  <span>{item.percent}</span>
+                  <span style={{ textAlign: "right", whiteSpace: "nowrap" }}>{item.amount}</span>
+                  <span style={{ textAlign: "right", whiteSpace: "nowrap" }}>{item.percent}</span>
                 </div>
               ))}
             </div>
@@ -719,36 +765,99 @@ export function DashboardView({
               alignItems: "center",
               gap: 8,
               textTransform: "uppercase",
-              marginBottom: 34,
+              marginBottom: 22,
             }}
           >
-            Net Worth Breakdown <InfoDot />
+            Balance Sheet Snapshot <InfoDot />
           </div>
-          {dynamicBreakdown.map((item) => (
-            <div key={item.label} style={{ marginBottom: 26 }}>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 14 }}>
+            {[
+              ["Total Net Worth", wholeDollars(allocationTotal), "#8feaff"],
+              ["Active Categories", String(rankedAllocations.length), "#00f59b"],
+              ["Largest Bucket", largestAllocation?.name || "—", largestAllocation?.color || "#c9d8ee"],
+              ["Largest Share", largestAllocation?.percent || "—", largestAllocation?.color || "#ffb65d"],
+            ].map(([label, value, color]) => (
               <div
+                key={label}
                 style={{
-                  display: "flex",
-                  justifyContent: "space-between",
-                  marginBottom: 12,
-                  fontSize: 14,
+                  border: "1px solid rgba(0,136,255,.18)",
+                  borderRadius: 14,
+                  background: "rgba(3,17,32,.58)",
+                  padding: "16px 18px",
                 }}
               >
-                <span>{item.label}</span>
-                <b>{item.value}</b>
-              </div>
-              <div style={{ height: 4, borderRadius: 999, background: "rgba(23,76,136,.38)" }}>
                 <div
                   style={{
-                    height: 4,
-                    borderRadius: 999,
-                    width: item.width,
-                    background: item.color,
+                    color: "#8fb1d9",
+                    fontSize: 12,
+                    textTransform: "uppercase",
+                    letterSpacing: 0.9,
+                    marginBottom: 10,
                   }}
-                />
+                >
+                  {label}
+                </div>
+                <div
+                  style={{
+                    color,
+                    fontSize: 22,
+                    fontWeight: 900,
+                    lineHeight: 1.2,
+                  }}
+                >
+                  {value}
+                </div>
               </div>
+            ))}
+          </div>
+
+          <div style={{ marginTop: 24 }}>
+            <div
+              style={{
+                color: "#8fb1d9",
+                fontSize: 12,
+                textTransform: "uppercase",
+                letterSpacing: 0.9,
+                marginBottom: 14,
+              }}
+            >
+              Category Ranking
             </div>
-          ))}
+            {rankedAllocations.map((item, index) => (
+              <div
+                key={item.name}
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "32px minmax(0, 1fr) auto auto",
+                  gap: 16,
+                  alignItems: "center",
+                  padding: "12px 0",
+                  borderTop: index === 0 ? "1px solid rgba(0,136,255,.14)" : "1px solid rgba(0,136,255,.08)",
+                  fontVariantNumeric: "tabular-nums",
+                }}
+              >
+                <div style={{ color: "#5e7da0", fontSize: 13, fontWeight: 800 }}>#{index + 1}</div>
+                <div style={{ display: "flex", alignItems: "center", gap: 12, minWidth: 0 }}>
+                  <span
+                    style={{
+                      width: 10,
+                      height: 10,
+                      borderRadius: 999,
+                      background: item.color,
+                      flexShrink: 0,
+                    }}
+                  />
+                  <span style={{ color: "white", fontWeight: 700 }}>{item.name}</span>
+                </div>
+                <div style={{ color: "#dcecff", textAlign: "right", whiteSpace: "nowrap" }}>
+                  {item.amount}
+                </div>
+                <div style={{ color: item.color, textAlign: "right", whiteSpace: "nowrap", fontWeight: 800 }}>
+                  {item.percent}
+                </div>
+              </div>
+            ))}
+          </div>
         </div>
       </section>
     </>
