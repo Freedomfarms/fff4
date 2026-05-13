@@ -233,10 +233,35 @@ function ForwardFreedomDashboard() {
     setActiveTab("Transactions");
   };
 
+  const addManualTransaction = (transaction) => {
+    setTransactions((current) => [
+      {
+        ...transaction,
+        id: `manual-tx-${Date.now()}-${current.length + 1}`,
+        source: "manual",
+      },
+      ...current,
+    ]);
+  };
+
+  const deleteManualTransaction = (transactionId) => {
+    setTransactions((current) =>
+      current.filter(
+        (transaction) => transaction.id !== transactionId || transaction.source !== "manual"
+      )
+    );
+  };
+
   const updateTransactionCategory = (transactionIndex, nextCategory) => {
     const transactionToUpdate = visibleTransactions[transactionIndex];
 
     setTransactions((current) => {
+      if (transactionToUpdate.id) {
+        return current.map((tx) =>
+          tx.id === transactionToUpdate.id ? { ...tx, category: nextCategory } : tx
+        );
+      }
+
       const existingIndex = current.findIndex(
         (tx) =>
           tx.date === transactionToUpdate.date &&
@@ -312,6 +337,8 @@ function ForwardFreedomDashboard() {
               setActiveTab={setActiveTab}
               setSelectedAccount={setSelectedAccount}
               connectMockPlaidAccount={connectMockPlaidAccount}
+              addManualTransaction={addManualTransaction}
+              deleteManualTransaction={deleteManualTransaction}
               updateTransactionCategory={updateTransactionCategory}
             />
           ) : (
