@@ -149,6 +149,8 @@ function ForwardFreedomDashboard() {
     .reduce((sum, account) => sum + account.balance, 0);
 
   const currentMonth = "May";
+  const currentMonthIndex = budgetMonths.indexOf(currentMonth);
+  const nextMonth = budgetMonths[(currentMonthIndex + 1) % budgetMonths.length] || "Jun";
   const currentMonthIncome = incomeStreams
     .filter((s) => (s.months || budgetMonths).includes(currentMonth))
     .reduce((sum, s) => sum + parseMoney(s.amount), 0);
@@ -156,6 +158,13 @@ function ForwardFreedomDashboard() {
     .filter((r) => (r.months || budgetMonths).includes(currentMonth))
     .reduce((sum, r) => sum + Number(r.budget || 0), 0);
   const monthlyFlow = currentMonthIncome - currentMonthBudget;
+  const nextMonthIncome = incomeStreams
+    .filter((s) => (s.months || budgetMonths).includes(nextMonth))
+    .reduce((sum, s) => sum + parseMoney(s.amount), 0);
+  const nextMonthBudget = budgetRows
+    .filter((r) => (r.months || budgetMonths).includes(nextMonth))
+    .reduce((sum, r) => sum + Number(r.budget || 0), 0);
+  const nextMonthFlow = nextMonthIncome - nextMonthBudget;
 
   const totalNetWorth = Math.max(
     trueCash + investmentTotal + cryptoTotal + preciousMetalsTotal + realEstateTotal + retirementTotal,
@@ -285,10 +294,13 @@ function ForwardFreedomDashboard() {
     },
     {
       icon: "▰",
-      title: "NET WORTH",
-      value: money(totalNetWorth),
-      ...buildTrackedMetricMeta(metricSnapshots, "totalNetWorth", totalNetWorth, true),
-      onClick: () => setActiveTab("Add Accounts"),
+      title: "NEXT MONTH CASH FLOW",
+      value: money(nextMonthFlow),
+      change: nextMonthFlow >= 0 ? "Projected surplus" : "Projected deficit",
+      changeColor: nextMonthFlow >= 0 ? "#00f59b" : "#ff355d",
+      changeIcon: nextMonthFlow >= 0 ? "↑" : "↓",
+      subLabel: `${nextMonth} plan`,
+      onClick: () => setActiveTab("Budget Command Center"),
     },
   ];
 

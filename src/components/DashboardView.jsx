@@ -825,6 +825,235 @@ export function DashboardView({
         ))}
       </section>
 
+      <section
+        style={{ display: "grid", gridTemplateColumns: "1fr 1.08fr", gap: 16, marginTop: 16 }}
+      >
+        <div style={{ ...styles.panel, padding: 20 }}>
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 8,
+              textTransform: "uppercase",
+              marginBottom: 18,
+            }}
+          >
+            Monthly Budget Review <InfoDot />
+          </div>
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+              gap: 18,
+              marginBottom: 16,
+            }}
+          >
+            <div>
+              <div style={{ color: "white", fontSize: 22, fontWeight: 900 }}>
+                {budgetMonthNames[monthlyBudgetReview.month]} {monthlyBudgetReview.year}
+              </div>
+              <div style={{ color: "#8ea8ca", fontSize: 13, marginTop: 6 }}>
+                Budgeted plan vs actual spending across your highest-impact categories.
+              </div>
+              {subscriptionOverview.activeCount > 0 ? (
+                <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginTop: 10 }}>
+                  <span
+                    style={{
+                      border: "1px solid rgba(0,216,255,.18)",
+                      borderRadius: 999,
+                      padding: "6px 10px",
+                      color: "#8feaff",
+                      fontSize: 12,
+                    }}
+                  >
+                    Auto-pay commitments {money(subscriptionOverview.activeMonthly)}/mo
+                  </span>
+                  {subscriptionOverview.topAccounts[0] ? (
+                    <span
+                      style={{
+                        border: "1px solid rgba(0,216,255,.18)",
+                        borderRadius: 999,
+                        padding: "6px 10px",
+                        color: "#b8d3f3",
+                        fontSize: 12,
+                      }}
+                    >
+                      Highest billed account: {subscriptionOverview.topAccounts[0].account}
+                    </span>
+                  ) : null}
+                </div>
+              ) : null}
+            </div>
+            <div style={{ display: "flex", gap: 10 }}>
+              <button
+                onClick={() => setActiveTab("Recurring Subscriptions")}
+                style={{
+                  background: "rgba(0,136,255,.08)",
+                  border: "1px solid rgba(0,216,255,.18)",
+                  color: "#d7ebff",
+                  borderRadius: 8,
+                  padding: "10px 14px",
+                  cursor: "pointer",
+                  fontWeight: 700,
+                  whiteSpace: "nowrap",
+                }}
+              >
+                Open Subscriptions
+              </button>
+              <button
+                onClick={() => setActiveTab("Budget Command Center")}
+                style={{
+                  background: "rgba(0,136,255,.12)",
+                  border: "1px solid rgba(0,216,255,.28)",
+                  color: "#d7ebff",
+                  borderRadius: 8,
+                  padding: "10px 14px",
+                  cursor: "pointer",
+                  fontWeight: 700,
+                  whiteSpace: "nowrap",
+                }}
+              >
+                Open Budget Center
+              </button>
+            </div>
+          </div>
+
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 14 }}>
+            {[
+              ["Budget", money(monthlyBudgetReview.monthlyBudget), "#8feaff"],
+              ["Spent", money(monthlyBudgetReview.monthlySpent), "#ffb65d"],
+              [
+                monthlyBudgetReview.remaining >= 0 ? "Remaining" : "Over Budget",
+                `${monthlyBudgetReview.remaining >= 0 ? "" : "-"}${money(
+                  Math.abs(monthlyBudgetReview.remaining)
+                )}`,
+                monthlyBudgetReview.remaining >= 0 ? "#00f59b" : "#ff5d7a",
+              ],
+            ].map(([label, value, color]) => (
+              <div
+                key={label}
+                style={{
+                  border: "1px solid rgba(0,136,255,.18)",
+                  borderRadius: 14,
+                  background: "rgba(3,17,32,.58)",
+                  padding: "16px 18px 18px",
+                }}
+              >
+                <div
+                  style={{
+                    color: "#8fb1d9",
+                    fontSize: 12,
+                    textTransform: "uppercase",
+                    letterSpacing: 0.9,
+                    marginBottom: 10,
+                  }}
+                >
+                  {label}
+                </div>
+                <div
+                  style={{
+                    color,
+                    fontSize: 22,
+                    fontWeight: 900,
+                    lineHeight: 1.2,
+                  }}
+                >
+                  {value}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div style={{ ...styles.panel, padding: 20 }}>
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 8,
+              textTransform: "uppercase",
+              marginBottom: 20,
+            }}
+          >
+            Net Worth Breakdown <InfoDot />
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: 30 }}>
+            <div
+              style={{
+                position: "relative",
+                width: 182,
+                height: 182,
+                borderRadius: 999,
+                background: allocationGradient,
+                padding: 30,
+                boxShadow: "0 0 35px rgba(0,174,255,.45)",
+                flexShrink: 0,
+              }}
+            >
+              <div
+                style={{ width: "100%", height: "100%", borderRadius: 999, background: "#031120" }}
+              />
+              <div
+                style={{
+                  position: "absolute",
+                  inset: 0,
+                  display: "flex",
+                  flexDirection: "column",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  textAlign: "center",
+                  pointerEvents: "none",
+                }}
+              >
+                <div
+                  style={{
+                    color: "white",
+                    fontSize: 24,
+                    fontWeight: 900,
+                    lineHeight: 1.15,
+                    maxWidth: 112,
+                  }}
+                >
+                  {wholeDollars(allocationTotal)}
+                </div>
+              </div>
+            </div>
+            <div style={{ flex: 1, fontSize: 14 }}>
+              {dynamicAllocations.map((item) => (
+                <div
+                  key={item.name}
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "minmax(0, 1fr) 126px 64px",
+                    gap: 16,
+                    marginBottom: 16,
+                    alignItems: "center",
+                    fontVariantNumeric: "tabular-nums",
+                  }}
+                >
+                  <span style={{ minWidth: 0 }}>
+                    <b
+                      style={{
+                        display: "inline-block",
+                        width: 10,
+                        height: 10,
+                        borderRadius: 999,
+                        background: item.color,
+                        marginRight: 12,
+                      }}
+                    />
+                    {item.name}
+                  </span>
+                  <span style={{ textAlign: "right", whiteSpace: "nowrap" }}>{item.amount}</span>
+                  <span style={{ textAlign: "right", whiteSpace: "nowrap" }}>{item.percent}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </section>
+
       <section style={{ ...styles.panel, padding: 20, marginTop: 16 }}>
         <div
           style={{
@@ -971,235 +1200,6 @@ export function DashboardView({
             Keep using the app daily to build a net worth trendline from tracked snapshots.
           </div>
         )}
-      </section>
-
-      <section
-        style={{ display: "grid", gridTemplateColumns: "1fr 1.08fr", gap: 16, marginTop: 16 }}
-      >
-        <div style={{ ...styles.panel, padding: 20 }}>
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 8,
-              textTransform: "uppercase",
-              marginBottom: 20,
-            }}
-          >
-            Net Worth Breakdown <InfoDot />
-          </div>
-          <div style={{ display: "flex", alignItems: "center", gap: 30 }}>
-            <div
-              style={{
-                position: "relative",
-                width: 182,
-                height: 182,
-                borderRadius: 999,
-                background: allocationGradient,
-                padding: 30,
-                boxShadow: "0 0 35px rgba(0,174,255,.45)",
-                flexShrink: 0,
-              }}
-            >
-              <div
-                style={{ width: "100%", height: "100%", borderRadius: 999, background: "#031120" }}
-              />
-              <div
-                style={{
-                  position: "absolute",
-                  inset: 0,
-                  display: "flex",
-                  flexDirection: "column",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  textAlign: "center",
-                  pointerEvents: "none",
-                }}
-              >
-                <div
-                  style={{
-                    color: "white",
-                    fontSize: 24,
-                    fontWeight: 900,
-                    lineHeight: 1.15,
-                    maxWidth: 112,
-                  }}
-                >
-                  {wholeDollars(allocationTotal)}
-                </div>
-              </div>
-            </div>
-            <div style={{ flex: 1, fontSize: 14 }}>
-              {dynamicAllocations.map((item) => (
-                <div
-                  key={item.name}
-                  style={{
-                    display: "grid",
-                    gridTemplateColumns: "minmax(0, 1fr) 126px 64px",
-                    gap: 16,
-                    marginBottom: 16,
-                    alignItems: "center",
-                    fontVariantNumeric: "tabular-nums",
-                  }}
-                >
-                  <span style={{ minWidth: 0 }}>
-                    <b
-                      style={{
-                        display: "inline-block",
-                        width: 10,
-                        height: 10,
-                        borderRadius: 999,
-                        background: item.color,
-                        marginRight: 12,
-                      }}
-                    />
-                    {item.name}
-                  </span>
-                  <span style={{ textAlign: "right", whiteSpace: "nowrap" }}>{item.amount}</span>
-                  <span style={{ textAlign: "right", whiteSpace: "nowrap" }}>{item.percent}</span>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-
-        <div style={{ ...styles.panel, padding: 20 }}>
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 8,
-              textTransform: "uppercase",
-              marginBottom: 18,
-            }}
-          >
-            Monthly Budget Review <InfoDot />
-          </div>
-          <div
-            style={{
-              display: "flex",
-              justifyContent: "space-between",
-              alignItems: "center",
-              gap: 18,
-              marginBottom: 16,
-            }}
-          >
-            <div>
-              <div style={{ color: "white", fontSize: 22, fontWeight: 900 }}>
-                {budgetMonthNames[monthlyBudgetReview.month]} {monthlyBudgetReview.year}
-              </div>
-              <div style={{ color: "#8ea8ca", fontSize: 13, marginTop: 6 }}>
-                Budgeted plan vs actual spending across your highest-impact categories.
-              </div>
-              {subscriptionOverview.activeCount > 0 ? (
-                <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginTop: 10 }}>
-                  <span
-                    style={{
-                      border: "1px solid rgba(0,216,255,.18)",
-                      borderRadius: 999,
-                      padding: "6px 10px",
-                      color: "#8feaff",
-                      fontSize: 12,
-                    }}
-                  >
-                    Auto-pay commitments {money(subscriptionOverview.activeMonthly)}/mo
-                  </span>
-                  {subscriptionOverview.topAccounts[0] ? (
-                    <span
-                      style={{
-                        border: "1px solid rgba(0,216,255,.18)",
-                        borderRadius: 999,
-                        padding: "6px 10px",
-                        color: "#b8d3f3",
-                        fontSize: 12,
-                      }}
-                    >
-                      Highest billed account: {subscriptionOverview.topAccounts[0].account}
-                    </span>
-                  ) : null}
-                </div>
-              ) : null}
-            </div>
-            <div style={{ display: "flex", gap: 10 }}>
-              <button
-                onClick={() => setActiveTab("Recurring Subscriptions")}
-                style={{
-                  background: "rgba(0,136,255,.08)",
-                  border: "1px solid rgba(0,216,255,.18)",
-                  color: "#d7ebff",
-                  borderRadius: 8,
-                  padding: "10px 14px",
-                  cursor: "pointer",
-                  fontWeight: 700,
-                  whiteSpace: "nowrap",
-                }}
-              >
-                Open Subscriptions
-              </button>
-              <button
-                onClick={() => setActiveTab("Budget Command Center")}
-                style={{
-                  background: "rgba(0,136,255,.12)",
-                  border: "1px solid rgba(0,216,255,.28)",
-                  color: "#d7ebff",
-                  borderRadius: 8,
-                  padding: "10px 14px",
-                  cursor: "pointer",
-                  fontWeight: 700,
-                  whiteSpace: "nowrap",
-                }}
-              >
-                Open Budget Center
-              </button>
-            </div>
-          </div>
-
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 14 }}>
-            {[
-              ["Budget", money(monthlyBudgetReview.monthlyBudget), "#8feaff"],
-              ["Spent", money(monthlyBudgetReview.monthlySpent), "#ffb65d"],
-              [
-                monthlyBudgetReview.remaining >= 0 ? "Remaining" : "Over Budget",
-                `${monthlyBudgetReview.remaining >= 0 ? "" : "-"}${money(
-                  Math.abs(monthlyBudgetReview.remaining)
-                )}`,
-                monthlyBudgetReview.remaining >= 0 ? "#00f59b" : "#ff5d7a",
-              ],
-            ].map(([label, value, color]) => (
-              <div
-                key={label}
-                style={{
-                  border: "1px solid rgba(0,136,255,.18)",
-                  borderRadius: 14,
-                  background: "rgba(3,17,32,.58)",
-                  padding: "16px 18px 18px",
-                }}
-              >
-                <div
-                  style={{
-                    color: "#8fb1d9",
-                    fontSize: 12,
-                    textTransform: "uppercase",
-                    letterSpacing: 0.9,
-                    marginBottom: 10,
-                  }}
-                >
-                  {label}
-                </div>
-                <div
-                  style={{
-                    color,
-                    fontSize: 22,
-                    fontWeight: 900,
-                    lineHeight: 1.2,
-                  }}
-                >
-                  {value}
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
       </section>
     </>
   );
