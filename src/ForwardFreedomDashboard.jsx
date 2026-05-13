@@ -1,18 +1,22 @@
 import { useState } from "react";
 import {
+  budgetMonths,
   incomeStreamSeed,
   initialAccounts,
   initialBudgetCategories,
+  initialSubscriptions,
   mockTransactions,
 } from "./data/constants.jsx";
 import { styles } from "./styles.js";
-import { money } from "./utils/format.js";
+import { money, parseMoney } from "./utils/format.js";
 import { AccountsView } from "./components/AccountsView.jsx";
 import { BudgetCommandCenter } from "./components/BudgetCommandCenter.jsx";
 import { DashboardView } from "./components/DashboardView.jsx";
+import { ForecastLab } from "./components/ForecastLab.jsx";
 import { LandingPage } from "./components/LandingPage.jsx";
 import { AppSidebar, ModulePlaceholder } from "./components/Layout.jsx";
 import { OperationsBoard } from "./components/OperationsBoard.jsx";
+import { RecurringSubscriptions } from "./components/RecurringSubscriptions.jsx";
 import { TransactionsView } from "./components/TransactionsView.jsx";
 
 function ForwardFreedomDashboard() {
@@ -23,6 +27,7 @@ function ForwardFreedomDashboard() {
   const [budgetRows, setBudgetRows] = useState(initialBudgetCategories);
   const [incomeStreams, setIncomeStreams] = useState(incomeStreamSeed);
   const [projectionAdjustments, setProjectionAdjustments] = useState({});
+  const [subscriptions, setSubscriptions] = useState(initialSubscriptions);
   const [activeTab, setActiveTab] = useState("Dashboard");
   const [activeRange, setActiveRange] = useState("ALL");
 
@@ -49,6 +54,15 @@ function ForwardFreedomDashboard() {
     .filter((account) => account.type === "Retirement")
     .reduce((sum, account) => sum + account.balance, 0);
 
+  const currentMonth = "May";
+  const currentMonthIncome = incomeStreams
+    .filter((s) => (s.months || budgetMonths).includes(currentMonth))
+    .reduce((sum, s) => sum + parseMoney(s.amount), 0);
+  const currentMonthBudget = budgetRows
+    .filter((r) => (r.months || budgetMonths).includes(currentMonth))
+    .reduce((sum, r) => sum + Number(r.budget || 0), 0);
+  const monthlyFlow = currentMonthIncome - currentMonthBudget;
+
   const dynamicMetrics = [
     {
       icon: "▱",
@@ -67,9 +81,9 @@ function ForwardFreedomDashboard() {
     {
       icon: "⌁",
       title: "MONTHLY CASH FLOW",
-      value: "$2,153.00",
-      change: "$480.00 (28.69%)",
-      red: false,
+      value: money(monthlyFlow),
+      change: monthlyFlow >= 0 ? "Projected surplus" : "Projected deficit",
+      red: monthlyFlow < 0,
     },
     {
       icon: "▰",
@@ -80,50 +94,60 @@ function ForwardFreedomDashboard() {
     },
   ];
 
+  const realEstateValue = 82000;
+  const totalNetWorth = Math.max(
+    investmentTotal + liquidCash + realEstateValue + retirementTotal,
+    1
+  );
+  const pct = (v) => `${((v / totalNetWorth) * 100).toFixed(1)}%`;
+
   const dynamicAllocations = [
     {
       name: "Investments",
       amount: money(investmentTotal),
-      percent: "19.2%",
+      percent: pct(investmentTotal),
       color: "#168bff",
     },
     {
       name: "Liquid Cash",
       amount: money(liquidCash),
-      percent: "21.5%",
+      percent: pct(liquidCash),
       color: "#8b34ff",
     },
     {
       name: "Real Estate",
-      amount: "$82,000.00",
-      percent: "32.4%",
+      amount: money(realEstateValue),
+      percent: pct(realEstateValue),
       color: "#18d3ff",
     },
     {
       name: "Retirement Accounts",
       amount: money(retirementTotal),
-      percent: "26.9%",
+      percent: pct(retirementTotal),
       color: "#ffb65d",
     },
   ];
+
+  const breakdownMax = Math.max(liquidCash, creditCardDebt, investmentTotal, retirementTotal, 1);
+  const bpct = (v) => `${Math.round((v / breakdownMax) * 100)}%`;
 
   const dynamicBreakdown = [
     {
       label: "Liquid Cash",
       value: money(liquidCash),
-      width: "42%",
+      width: bpct(liquidCash),
       color: "#138bff",
     },
     {
       label: "Credit Card Debt",
       value: `-${money(creditCardDebt)}`,
-      width: "14%",
+      width: bpct(creditCardDebt),
       color: "#ff244d",
     },
     {
       label: "Investments",
       value: money(investmentTotal),
-      width: "76%",
+      width: bpct(investmentTotal),
       color: "#00d8ff",
     },
   ];
@@ -340,6 +364,18 @@ function ForwardFreedomDashboard() {
               addManualTransaction={addManualTransaction}
               deleteManualTransaction={deleteManualTransaction}
               updateTransactionCategory={updateTransactionCategory}
+            />
+          ) : activeTab === "Forecast Lab" ? (
+            <ForecastLab
+              trueCash={trueCash}
+              incomeStreams={incomeStreams}
+              budgetRows={budgetRows}
+              projectionAdjustments={projectionAdjustments}
+            />
+          ) : activeTab === "Recurring Subscriptions" ? (
+            <RecurringSubscriptions
+              subscriptions={subscriptions}
+              setSubscriptions={setSubscriptions}
             />
           ) : (
             <ModulePlaceholder activeTab={activeTab} />
