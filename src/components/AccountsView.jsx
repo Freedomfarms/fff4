@@ -3,30 +3,12 @@ import { styles } from "../styles.js";
 import { money } from "../utils/format.js";
 
 const accountGroups = [
-  {
-    title: "Checking",
-    filter: (account) => account.type === "Checking",
-  },
-  {
-    title: "Savings",
-    filter: (account) => account.type === "Savings",
-  },
-  {
-    title: "Investments",
-    filter: (account) => account.type === "Investment",
-  },
-  {
-    title: "Retirement",
-    filter: (account) => account.type === "Retirement",
-  },
-  {
-    title: "Credit Cards",
-    filter: (account) => account.type === "Credit Card",
-  },
-  {
-    title: "Other",
-    filter: (account) => account.type === "Manual Cash",
-  },
+  { title: "Checking", filter: (a) => a.type === "Checking" },
+  { title: "Savings", filter: (a) => a.type === "Savings" },
+  { title: "Investments", filter: (a) => a.type === "Investment" },
+  { title: "Retirement", filter: (a) => a.type === "Retirement" },
+  { title: "Credit Cards", filter: (a) => a.type === "Credit Card" },
+  { title: "Other / Cash", filter: (a) => a.type === "Manual Cash" },
 ];
 
 const ACCOUNT_TYPES = [
@@ -40,23 +22,42 @@ const ACCOUNT_TYPES = [
 
 const EMPTY_FORM = { name: "", type: "Checking", institution: "", balance: "" };
 
+function parseBalance(raw) {
+  const str = String(raw).trim();
+  const isNeg = str.startsWith("-");
+  const digits = str.replace(/[^0-9.]/g, "");
+  const n = Number(digits);
+  return isNeg ? -Math.abs(n) : n;
+}
+
 export function AccountsView({
   accounts,
   addManualAccount,
   connectMockPlaidAccount,
   openAccountTransactions,
 }) {
-  const [showForm, setShowForm] = useState(false);
+  const [showModal, setShowModal] = useState(false);
   const [form, setForm] = useState(EMPTY_FORM);
 
-  const linkedBalance = accounts.reduce((sum, account) => sum + account.balance, 0);
+  const linkedBalance = accounts.reduce((sum, a) => sum + a.balance, 0);
+  const update = (field, value) => setForm((f) => ({ ...f, [field]: value }));
 
-  const updateForm = (field, value) => setForm((f) => ({ ...f, [field]: value }));
-
+  const parsedBalance = parseBalance(form.balance);
   const canSubmit =
-    form.name.trim() &&
-    form.type &&
-    Number.isFinite(Number(String(form.balance).replace(/[^0-9.-]/g, "")));
+    form.name.trim().length > 0 &&
+    form.type.length > 0 &&
+    form.balance.trim().length > 0 &&
+    Number.isFinite(parsedBalance);
+
+  const openModal = () => {
+    setForm(EMPTY_FORM);
+    setShowModal(true);
+  };
+
+  const closeModal = () => {
+    setForm(EMPTY_FORM);
+    setShowModal(false);
+  };
 
   const handleSubmit = (e) => {
     e.preventDefault();
@@ -64,27 +65,37 @@ export function AccountsView({
     addManualAccount({
       name: form.name.trim(),
       type: form.type,
-      institution: form.institution.trim(),
-      balance: Number(String(form.balance).replace(/[^0-9.-]/g, "")),
+      institution: form.institution.trim() || form.type,
+      balance: parsedBalance,
     });
-    setForm(EMPTY_FORM);
-    setShowForm(false);
+    closeModal();
   };
 
-  const fieldStyle = {
+  const inputStyle = {
     color: "#eaf3ff",
-    background: "rgba(0,136,255,.08)",
-    border: "1px solid rgba(0,216,255,.18)",
-    borderRadius: 8,
-    padding: "10px 12px",
+    background: "rgba(0,136,255,.09)",
+    border: "1px solid rgba(0,216,255,.22)",
+    borderRadius: 9,
+    padding: "11px 13px",
     outline: "none",
     fontWeight: 800,
     colorScheme: "dark",
+    fontSize: 15,
     width: "100%",
+  };
+
+  const labelStyle = { display: "grid", gap: 8 };
+  const labelCapStyle = {
+    color: "#8fb1d9",
+    fontSize: 11,
+    textTransform: "uppercase",
+    letterSpacing: 0.9,
+    fontWeight: 900,
   };
 
   return (
     <div>
+      {/* Header */}
       <header
         style={{
           display: "flex",
@@ -96,25 +107,25 @@ export function AccountsView({
         <div>
           <h1 style={{ margin: 0, fontSize: 32, color: "white", fontWeight: 800 }}>Add Accounts</h1>
           <p style={{ marginTop: 8, color: "#8ea8ca" }}>
-            Connect bank accounts, credit cards, investments, and cash accounts through a
-            Plaid-style secure link.
+            Connect bank accounts, credit cards, investments, and cash accounts.
           </p>
         </div>
         <div style={{ display: "flex", gap: 12 }}>
           <button
-            onClick={() => setShowForm((v) => !v)}
+            onClick={openModal}
             style={{
-              background: showForm ? "rgba(0,136,255,.18)" : "rgba(0,136,255,.10)",
-              border: "1px solid rgba(0,216,255,.35)",
+              background: "rgba(0,136,255,.12)",
+              border: "1px solid rgba(0,216,255,.38)",
               borderRadius: 10,
               color: "#eaf3ff",
-              padding: "14px 20px",
+              padding: "14px 22px",
               fontWeight: 800,
               boxShadow: "0 0 20px rgba(0,136,255,.18)",
               cursor: "pointer",
+              fontSize: 15,
             }}
           >
-            {showForm ? "✕ Cancel" : "✎ Add Manually"}
+            ✎ Add Manually
           </button>
           <button
             onClick={connectMockPlaidAccount}
@@ -127,6 +138,7 @@ export function AccountsView({
               fontWeight: 800,
               boxShadow: "0 0 28px rgba(0,136,255,.35)",
               cursor: "pointer",
+              fontSize: 15,
             }}
           >
             ⊕ Connect with Plaid
@@ -134,159 +146,7 @@ export function AccountsView({
         </div>
       </header>
 
-      {/* Manual account form */}
-      {showForm ? (
-        <form
-          onSubmit={handleSubmit}
-          style={{
-            ...styles.panel,
-            padding: 22,
-            marginBottom: 20,
-            border: "1px solid rgba(0,216,255,.28)",
-            boxShadow: "inset 0 0 22px rgba(0,136,255,.07)",
-          }}
-        >
-          <div
-            style={{
-              color: "white",
-              fontSize: 18,
-              fontWeight: 900,
-              marginBottom: 18,
-              display: "flex",
-              alignItems: "center",
-              gap: 10,
-            }}
-          >
-            <span style={{ color: "#00d8ff" }}>✎</span> New Manual Account
-          </div>
-
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "1.6fr 1fr 1.2fr 1fr auto",
-              gap: 14,
-              alignItems: "end",
-            }}
-          >
-            <label style={{ display: "grid", gap: 7 }}>
-              <span
-                style={{
-                  color: "#8fb1d9",
-                  fontSize: 11,
-                  textTransform: "uppercase",
-                  letterSpacing: 0.8,
-                  fontWeight: 900,
-                }}
-              >
-                Account Name
-              </span>
-              <input
-                type="text"
-                value={form.name}
-                placeholder="e.g. Home Safe, Cash Envelope"
-                onChange={(e) => updateForm("name", e.target.value)}
-                style={fieldStyle}
-                autoFocus
-              />
-            </label>
-
-            <label style={{ display: "grid", gap: 7 }}>
-              <span
-                style={{
-                  color: "#8fb1d9",
-                  fontSize: 11,
-                  textTransform: "uppercase",
-                  letterSpacing: 0.8,
-                  fontWeight: 900,
-                }}
-              >
-                Type
-              </span>
-              <select
-                value={form.type}
-                onChange={(e) => updateForm("type", e.target.value)}
-                style={fieldStyle}
-              >
-                {ACCOUNT_TYPES.map((t) => (
-                  <option key={t} value={t} style={{ background: "#061224" }}>
-                    {t}
-                  </option>
-                ))}
-              </select>
-            </label>
-
-            <label style={{ display: "grid", gap: 7 }}>
-              <span
-                style={{
-                  color: "#8fb1d9",
-                  fontSize: 11,
-                  textTransform: "uppercase",
-                  letterSpacing: 0.8,
-                  fontWeight: 900,
-                }}
-              >
-                Institution / Label
-              </span>
-              <input
-                type="text"
-                value={form.institution}
-                placeholder="Bank name or label"
-                onChange={(e) => updateForm("institution", e.target.value)}
-                style={fieldStyle}
-              />
-            </label>
-
-            <label style={{ display: "grid", gap: 7 }}>
-              <span
-                style={{
-                  color: "#8fb1d9",
-                  fontSize: 11,
-                  textTransform: "uppercase",
-                  letterSpacing: 0.8,
-                  fontWeight: 900,
-                }}
-              >
-                Balance ($)
-              </span>
-              <input
-                type="text"
-                value={form.balance}
-                placeholder="5000 or -1200"
-                onChange={(e) => updateForm("balance", e.target.value)}
-                style={fieldStyle}
-              />
-            </label>
-
-            <button
-              type="submit"
-              disabled={!canSubmit}
-              style={{
-                background: canSubmit
-                  ? "linear-gradient(90deg,#0077ff,#00d8ff)"
-                  : "rgba(120,130,150,.18)",
-                border: canSubmit
-                  ? "1px solid rgba(0,216,255,.45)"
-                  : "1px solid rgba(160,175,200,.16)",
-                borderRadius: 10,
-                color: canSubmit ? "white" : "#7f93ad",
-                padding: "11px 22px",
-                fontWeight: 900,
-                cursor: canSubmit ? "pointer" : "not-allowed",
-                boxShadow: canSubmit ? "0 0 20px rgba(0,136,255,.3)" : "none",
-                whiteSpace: "nowrap",
-              }}
-            >
-              Add + Open
-            </button>
-          </div>
-
-          <div style={{ color: "#7294bb", fontSize: 12, marginTop: 12 }}>
-            Use a negative balance for debt accounts (e.g. credit cards). After saving you&apos;ll
-            land directly in that account&apos;s transaction view.
-          </div>
-        </form>
-      ) : null}
-
+      {/* Hero */}
       <section
         style={{
           ...styles.panel,
@@ -328,11 +188,11 @@ export function AccountsView({
             <div style={{ color: "white", fontSize: 34, fontWeight: 900, lineHeight: 1.1 }}>
               Link with Plaid or add manually.
               <br />
-              <span style={{ color: "#00aaff" }}>Manual cash stays in accounts.</span>
+              <span style={{ color: "#00aaff" }}>Every account in one place.</span>
             </div>
             <p style={{ color: "#a8bfdc", fontSize: 16, lineHeight: 1.55, marginTop: 18 }}>
               Plaid accounts auto-feed transactions. Manual accounts are for cash, safes, private
-              assets, or anything you want tracked without bank sync.
+              assets, or anything you want tracked without a bank sync.
             </p>
           </div>
           <div
@@ -357,19 +217,18 @@ export function AccountsView({
               {money(linkedBalance)}
             </div>
             <div style={{ color: "#00f59b", marginTop: 10, fontWeight: 800 }}>
-              {accounts.length} accounts synced
+              {accounts.length} account{accounts.length !== 1 ? "s" : ""} synced
             </div>
           </div>
         </div>
       </section>
 
+      {/* Account list */}
       <section style={{ ...styles.panel, padding: 24 }}>
         <div style={{ height: 4 }} />
-
         {accountGroups.map((group) => {
-          const groupedAccounts = accounts.filter(group.filter);
-          if (groupedAccounts.length === 0) return null;
-
+          const grouped = accounts.filter(group.filter);
+          if (grouped.length === 0) return null;
           return (
             <div key={group.title} style={{ marginBottom: 28 }}>
               <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 16 }}>
@@ -394,7 +253,6 @@ export function AccountsView({
                   {group.title}
                 </div>
               </div>
-
               <div
                 style={{
                   display: "grid",
@@ -402,10 +260,10 @@ export function AccountsView({
                   gap: 16,
                 }}
               >
-                {groupedAccounts.map((account) => (
+                {grouped.map((account) => (
                   <div
-                    onClick={() => openAccountTransactions(account.name)}
                     key={account.name}
+                    onClick={() => openAccountTransactions(account.name)}
                     style={{
                       border: "1px solid rgba(0,136,255,.22)",
                       background: "rgba(3,17,32,.72)",
@@ -413,7 +271,6 @@ export function AccountsView({
                       padding: 18,
                       boxShadow: "inset 0 0 24px rgba(0,80,160,.08)",
                       cursor: "pointer",
-                      transition: "all .2s ease",
                     }}
                   >
                     <div style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
@@ -454,6 +311,190 @@ export function AccountsView({
           );
         })}
       </section>
+
+      {/* ── Add Account Modal ── */}
+      {showModal ? (
+        <div
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(0,5,14,.78)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            zIndex: 9999,
+          }}
+          onClick={(e) => {
+            if (e.target === e.currentTarget) closeModal();
+          }}
+        >
+          <form
+            onSubmit={handleSubmit}
+            style={{
+              ...styles.panel,
+              width: "min(560px, 94vw)",
+              padding: 28,
+              boxShadow: "0 0 60px rgba(0,136,255,.38)",
+              border: "1px solid rgba(0,216,255,.32)",
+            }}
+          >
+            {/* Modal header */}
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                marginBottom: 24,
+              }}
+            >
+              <div>
+                <div
+                  style={{
+                    color: "#8feaff",
+                    fontSize: 12,
+                    textTransform: "uppercase",
+                    letterSpacing: 1.2,
+                    marginBottom: 8,
+                  }}
+                >
+                  Manual Account
+                </div>
+                <div style={{ color: "white", fontSize: 26, fontWeight: 900 }}>
+                  Add a New Account
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={closeModal}
+                style={{
+                  background: "rgba(0,136,255,.10)",
+                  border: "1px solid rgba(0,216,255,.25)",
+                  borderRadius: 8,
+                  color: "#8fb1d9",
+                  width: 36,
+                  height: 36,
+                  cursor: "pointer",
+                  fontSize: 16,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  flexShrink: 0,
+                }}
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Fields */}
+            <div style={{ display: "grid", gap: 16 }}>
+              {/* Account Name */}
+              <label style={labelStyle}>
+                <span style={labelCapStyle}>Account Name</span>
+                <input
+                  type="text"
+                  value={form.name}
+                  placeholder="e.g. Chase Checking, Home Safe, Cash Envelope"
+                  onChange={(e) => update("name", e.target.value)}
+                  style={inputStyle}
+                  autoFocus
+                />
+              </label>
+
+              {/* Type + Institution side by side */}
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
+                <label style={labelStyle}>
+                  <span style={labelCapStyle}>Account Type</span>
+                  <select
+                    value={form.type}
+                    onChange={(e) => update("type", e.target.value)}
+                    style={inputStyle}
+                  >
+                    {ACCOUNT_TYPES.map((t) => (
+                      <option key={t} value={t} style={{ background: "#061224" }}>
+                        {t}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+
+                <label style={labelStyle}>
+                  <span style={labelCapStyle}>Bank / Institution</span>
+                  <input
+                    type="text"
+                    value={form.institution}
+                    placeholder="Bank name or label"
+                    onChange={(e) => update("institution", e.target.value)}
+                    style={inputStyle}
+                  />
+                </label>
+              </div>
+
+              {/* Balance */}
+              <label style={labelStyle}>
+                <span style={labelCapStyle}>Current Balance</span>
+                <input
+                  type="text"
+                  value={form.balance}
+                  placeholder="e.g. 5000 or -1250 for debt"
+                  onChange={(e) => update("balance", e.target.value)}
+                  style={{
+                    ...inputStyle,
+                    color: form.balance.trim().startsWith("-")
+                      ? "#ff8fa3"
+                      : form.balance.trim().length > 0
+                        ? "#00f59b"
+                        : "#eaf3ff",
+                  }}
+                />
+                <span style={{ color: "#7294bb", fontSize: 12 }}>
+                  Enter a negative number for debt / credit card balances (e.g. -2400).
+                </span>
+              </label>
+            </div>
+
+            {/* Actions */}
+            <div style={{ display: "flex", gap: 12, justifyContent: "flex-end", marginTop: 26 }}>
+              <button
+                type="button"
+                onClick={closeModal}
+                style={{
+                  background: "rgba(0,136,255,.10)",
+                  border: "1px solid rgba(0,216,255,.28)",
+                  color: "#d7ebff",
+                  borderRadius: 9,
+                  padding: "12px 20px",
+                  cursor: "pointer",
+                  fontWeight: 800,
+                  fontSize: 14,
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                disabled={!canSubmit}
+                style={{
+                  background: canSubmit
+                    ? "linear-gradient(90deg,#0077ff,#00d8ff)"
+                    : "rgba(120,130,150,.18)",
+                  border: canSubmit
+                    ? "1px solid rgba(0,216,255,.45)"
+                    : "1px solid rgba(160,175,200,.16)",
+                  borderRadius: 9,
+                  color: canSubmit ? "white" : "#7f93ad",
+                  padding: "12px 28px",
+                  fontWeight: 900,
+                  cursor: canSubmit ? "pointer" : "not-allowed",
+                  boxShadow: canSubmit ? "0 0 22px rgba(0,136,255,.32)" : "none",
+                  fontSize: 15,
+                }}
+              >
+                Add Account →
+              </button>
+            </div>
+          </form>
+        </div>
+      ) : null}
     </div>
   );
 }
