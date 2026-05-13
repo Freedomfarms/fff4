@@ -2,6 +2,7 @@ import { useState } from "react";
 import { styles } from "../styles.js";
 import { money, cleanMoneyInput } from "../utils/format.js";
 import { budgetMonths, budgetMonthNames } from "../data/constants.jsx";
+import { MonthCoverageEditor } from "./Common.jsx";
 
 const monthNameToBudgetMonth = Object.fromEntries(
   budgetMonths.map((month) => [budgetMonthNames[month], month])
@@ -61,6 +62,15 @@ export function BudgetCommandCenter({ transactions, budgetRows, setBudgetRows })
         }
         return { ...row, [field]: cleanMoneyInput(value) };
       })
+    );
+  };
+
+  const setBudgetRowMonths = (id, nextMonths) => {
+    const normalizedMonths = budgetMonths.filter((month) => nextMonths.includes(month));
+    const safeMonths = normalizedMonths.length ? normalizedMonths : [activeBudgetMonth];
+
+    setBudgetRows((rows) =>
+      rows.map((row) => (row.id === id ? { ...row, months: safeMonths } : row))
     );
   };
 
@@ -330,66 +340,20 @@ export function BudgetCommandCenter({ transactions, budgetRows, setBudgetRows })
 
                   <div
                     style={{
-                      display: "flex",
-                      alignItems: "center",
-                      gap: 12,
+                      display: "grid",
                       marginLeft: 6,
-                      whiteSpace: "nowrap",
+                      minWidth: 0,
                     }}
                   >
-                    <select
-                      defaultValue=""
-                      onChange={(event) => {
-                        if (event.target.value) {
-                          if (event.target.value === "ALL") {
-                            setBudgetRows((rows) =>
-                              rows.map((row) =>
-                                row.id === item.id ? { ...row, months: budgetMonths } : row
-                              )
-                            );
-                          } else {
-                            toggleBudgetMonth(item.id, event.target.value);
-                          }
-                          event.target.value = "";
-                        }
-                      }}
-                      style={{
-                        background: "rgba(0,136,255,.08)",
-                        border: "1px solid rgba(0,216,255,.18)",
-                        color: "#9fd8ff",
-                        borderRadius: 6,
-                        padding: "4px 7px",
-                        fontSize: 10,
-                        width: 94,
-                        outline: "none",
-                      }}
-                    >
-                      <option value="ALL">All Months</option>
-                      <option value="">Months</option>
-                      {budgetMonths.map((month) => (
-                        <option
-                          key={month}
-                          value={month}
-                          style={{ background: "#061224", color: "#eaf3ff" }}
-                        >
-                          {month}
-                        </option>
-                      ))}
-                    </select>
-                    <div
-                      style={{
-                        color: "#7ea6d8",
-                        fontSize: 11,
-                        fontWeight: 700,
-                        whiteSpace: "nowrap",
-                        overflow: "hidden",
-                        textOverflow: "ellipsis",
-                      }}
-                    >
-                      {(item.months || budgetMonths).length === 12
-                        ? "All months"
-                        : (item.months || budgetMonths).join(", ")}
-                    </div>
+                    <MonthCoverageEditor
+                      allMonths={budgetMonths}
+                      selectedMonths={item.months || budgetMonths}
+                      onToggleMonth={(month) => toggleBudgetMonth(item.id, month)}
+                      quickActions={[
+                        { label: "All", onClick: () => setBudgetRowMonths(item.id, budgetMonths) },
+                        { label: `Only ${activeBudgetMonth}`, onClick: () => setBudgetRowMonths(item.id, [activeBudgetMonth]) },
+                      ]}
+                    />
                   </div>
                 </div>
               </div>

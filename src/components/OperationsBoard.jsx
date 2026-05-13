@@ -3,6 +3,7 @@ import { styles } from "../styles.js";
 import { money, parseMoney, wholeDollars } from "../utils/format.js";
 import { budgetMonths, chartSets, yearlyOpsData } from "../data/constants.jsx";
 import { buildSubscriptionMonthlySeries, buildSubscriptionOverview } from "../utils/subscriptions.js";
+import { MonthCoverageEditor } from "./Common.jsx";
 import {
   buildSyncedTrueCashChart,
   buildTrueCashProjectionSchedule,
@@ -69,6 +70,17 @@ export function OperationsBoard({
           months: nextMonths.length ? nextMonths : [month],
         };
       })
+    );
+  };
+
+  const setIncomeMonths = (index, nextMonths) => {
+    const normalizedMonths = budgetMonths.filter((month) => nextMonths.includes(month));
+    const safeMonths = normalizedMonths.length ? normalizedMonths : [budgetMonths[4]];
+
+    setIncomeStreams((streams) =>
+      streams.map((stream, streamIndex) =>
+        streamIndex === index ? { ...stream, months: safeMonths } : stream
+      )
     );
   };
   const dynamicYearlyOpsData = yearlyOpsData.map((month) => {
@@ -426,65 +438,23 @@ export function OperationsBoard({
                     </div>
                     <div
                       style={{
-                        display: "flex",
-                        alignItems: "center",
-                        gap: 10,
+                        display: "grid",
                         marginTop: 6,
-                        flexWrap: "wrap",
+                        minWidth: 0,
                       }}
                     >
                       <div style={{ color: "#00f59b", fontSize: 13, fontWeight: 800 }}>
                         {income.type}
                       </div>
-
-                      <select
-                        defaultValue=""
-                        onChange={(event) => {
-                          if (event.target.value) {
-                            if (event.target.value === "ALL") {
-                              setIncomeStreams((streams) =>
-                                streams.map((stream, streamIndex) =>
-                                  streamIndex === index
-                                    ? { ...stream, months: budgetMonths }
-                                    : stream
-                                )
-                              );
-                            } else {
-                              toggleIncomeMonth(index, event.target.value);
-                            }
-                            event.target.value = "";
-                          }
-                        }}
-                        style={{
-                          background: "rgba(0,136,255,.08)",
-                          border: "1px solid rgba(0,216,255,.18)",
-                          color: "#9fd8ff",
-                          borderRadius: 6,
-                          padding: "4px 7px",
-                          fontSize: 10,
-                          width: 94,
-                          outline: "none",
-                          fontWeight: 700,
-                        }}
-                      >
-                        <option value="ALL">All Months</option>
-                        <option value="">Months</option>
-                        {budgetMonths.map((month) => (
-                          <option
-                            key={month}
-                            value={month}
-                            style={{ background: "#061224", color: "#eaf3ff" }}
-                          >
-                            {month}
-                          </option>
-                        ))}
-                      </select>
-
-                      <div style={{ color: "#7ea6d8", fontSize: 11, fontWeight: 700 }}>
-                        {(income.months || budgetMonths).length === 12
-                          ? "All months"
-                          : (income.months || budgetMonths).join(", ")}
-                      </div>
+                      <MonthCoverageEditor
+                        allMonths={budgetMonths}
+                        selectedMonths={income.months || budgetMonths}
+                        onToggleMonth={(month) => toggleIncomeMonth(index, month)}
+                        quickActions={[
+                          { label: "All", onClick: () => setIncomeMonths(index, budgetMonths) },
+                          { label: "Only May", onClick: () => setIncomeMonths(index, ["May"]) },
+                        ]}
+                      />
                     </div>
                   </div>
 

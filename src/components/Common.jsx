@@ -117,3 +117,74 @@ export function MetricCard({ metric }) {
     </button>
   );
 }
+
+export function MonthCoverageEditor({ allMonths, selectedMonths, quickActions = [], onToggleMonth }) {
+  const activeMonths = selectedMonths?.length ? selectedMonths : allMonths;
+  const allSelected = activeMonths.length === allMonths.length;
+
+  return (
+    <div style={{ display: "grid", gap: 8, marginTop: 10 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+        <span
+          style={{
+            color: "#7ea6d8",
+            fontSize: 11,
+            fontWeight: 800,
+            textTransform: "uppercase",
+            letterSpacing: 0.8,
+          }}
+        >
+          {allSelected ? "All months active" : `${activeMonths.length} active month${activeMonths.length === 1 ? "" : "s"}`}
+        </span>
+        {quickActions.map((action) => (
+          <button
+            key={action.label}
+            type="button"
+            onClick={action.onClick}
+            style={{
+              background: "rgba(0,136,255,.08)",
+              border: "1px solid rgba(0,216,255,.18)",
+              color: "#9fd8ff",
+              borderRadius: 999,
+              padding: "5px 10px",
+              fontSize: 11,
+              fontWeight: 800,
+              cursor: "pointer",
+            }}
+          >
+            {action.label}
+          </button>
+        ))}
+      </div>
+
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+        {allMonths.map((month) => {
+          const isActive = activeMonths.includes(month);
+          return (
+            <button
+              key={month}
+              type="button"
+              onClick={() => onToggleMonth(month)}
+              style={{
+                background: isActive ? "rgba(0,104,255,.18)" : "rgba(4,18,34,.72)",
+                border: isActive
+                  ? "1px solid rgba(0,216,255,.42)"
+                  : "1px solid rgba(0,136,255,.16)",
+                color: isActive ? "#eaf7ff" : "#7ea6d8",
+                borderRadius: 999,
+                padding: "6px 10px",
+                fontSize: 11,
+                fontWeight: 800,
+                cursor: "pointer",
+                boxShadow: isActive ? "0 0 14px rgba(0,136,255,.16)" : "none",
+                minWidth: 42,
+              }}
+            >
+              {month}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
