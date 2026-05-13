@@ -55,7 +55,17 @@ export function MetricCard({ metric }) {
   const subLabel = metric.subLabel || "vs last 30 days";
 
   return (
-    <div style={{ ...styles.panel, padding: 20 }}>
+    <button
+      onClick={metric.onClick}
+      style={{
+        ...styles.panel,
+        padding: 20,
+        width: "100%",
+        border: "none",
+        cursor: metric.onClick ? "pointer" : "default",
+        textAlign: "left",
+      }}
+    >
       <div style={{ display: "flex", gap: 16, alignItems: "flex-start" }}>
         <div
           style={{
@@ -104,6 +114,6 @@ export function MetricCard({ metric }) {
           <div style={{ marginTop: 4, color: "#9fb0c9", fontSize: 14 }}>{subLabel}</div>
         </div>
       </div>
-    </div>
+    </button>
   );
 }

@@ -9,6 +9,8 @@ import {
 import { InfoDot, MetricCard } from "./Common.jsx";
 
 const CHART_HEIGHT = 300;
+const NET_WORTH_HISTORY_W = 620;
+const NET_WORTH_HISTORY_H = 180;
 const MONTH_END_X = {
   Jan: 80,
   Feb: 147,
@@ -69,6 +71,27 @@ function buildAllocationGradient(dynamicAllocations) {
       return `${item.color} ${start.toFixed(2)}% ${currentPercent.toFixed(2)}%`;
     })
     .join(", ")})`;
+}
+
+function buildFilledAreaPath(points, chartHeight) {
+  if (points.length === 0) return "";
+
+  const firstPoint = points[0];
+  const lastPoint = points[points.length - 1];
+  return (
+    buildLinePath(points) +
+    ` L ${lastPoint[0]} ${chartHeight} L ${firstPoint[0]} ${chartHeight} Z`
+  );
+}
+
+function formatSnapshotLabel(dateKey) {
+  const [year, month, day] = String(dateKey || "").split("-").map(Number);
+  if (!year || !month || !day) return dateKey;
+
+  return new Date(year, month - 1, day).toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+  });
 }
 
 const monthNameToBudgetMonth = Object.fromEntries(
@@ -139,9 +162,63 @@ function buildMonthlyBudgetReview(transactions, budgetRows) {
   };
 }
 
+function buildNetWorthHistory(metricSnapshots) {
+  const entries = Object.entries(metricSnapshots || {})
+    .sort(([a], [b]) => a.localeCompare(b))
+    .filter(([, snapshot]) => typeof snapshot?.totalNetWorth === "number")
+    .slice(-30);
+
+  if (entries.length === 0) {
+    return {
+      entries: [],
+      points: [],
+      linePath: "",
+      areaPath: "",
+      change: 0,
+      latestValue: 0,
+      labels: [],
+    };
+  }
+
+  const values = entries.map(([, snapshot]) => Number(snapshot.totalNetWorth) || 0);
+  const maxValue = Math.max(...values, 1);
+  const minValue = Math.min(...values, 0);
+  const paddedRange = Math.max((maxValue - minValue) * 0.18, 1);
+  const upper = maxValue + paddedRange;
+  const lower = minValue - paddedRange;
+  const range = Math.max(upper - lower, 1);
+
+  const points = entries.map(([, snapshot], index) => {
+    const x =
+      entries.length === 1 ? NET_WORTH_HISTORY_W / 2 : (index / (entries.length - 1)) * NET_WORTH_HISTORY_W;
+    const value = Number(snapshot.totalNetWorth) || 0;
+    const y = NET_WORTH_HISTORY_H - ((value - lower) / range) * NET_WORTH_HISTORY_H;
+    return [x, y];
+  });
+
+  const latestValue = values[values.length - 1] || 0;
+  const startValue = values[0] || 0;
+  const change = latestValue - startValue;
+  const labels =
+    entries.length >= 3
+      ? [entries[0][0], entries[Math.floor(entries.length / 2)][0], entries[entries.length - 1][0]]
+      : entries.map(([dateKey]) => dateKey);
+
+  return {
+    entries,
+    points,
+    linePath: buildLinePath(points),
+    areaPath: buildFilledAreaPath(points, NET_WORTH_HISTORY_H),
+    change,
+    latestValue,
+    labels,
+  };
+}
+
 export function DashboardView({
   activeRange,
   setActiveRange,
+  setActiveTab,
   trueCash,
   transactions,
   incomeStreams,
@@ -149,6 +226,7 @@ export function DashboardView({
   projectionAdjustments,
   dynamicMetrics,
   dynamicAllocations,
+  metricSnapshots,
 }) {
   const [hoverState, setHoverState] = useState(null);
   const allocationGradient = buildAllocationGradient(dynamicAllocations);
@@ -157,6 +235,7 @@ export function DashboardView({
     0
   );
   const monthlyBudgetReview = buildMonthlyBudgetReview(transactions, budgetRows);
+  const netWorthHistory = buildNetWorthHistory(metricSnapshots);
   const chartValues = buildSyncedTrueCashChart(chartSets[activeRange], trueCash);
   const projectionSchedule = buildTrueCashProjectionSchedule({
     chart: chartValues,
@@ -723,6 +802,128 @@ export function DashboardView({
         ))}
       </section>
 
+      <section style={{ ...styles.panel, padding: 20, marginTop: 16 }}>
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+            gap: 18,
+            marginBottom: 18,
+          }}
+        >
+          <div>
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 8,
+                textTransform: "uppercase",
+                marginBottom: 10,
+              }}
+            >
+              Net Worth History <InfoDot />
+            </div>
+            <div style={{ color: "white", fontSize: 26, fontWeight: 900 }}>
+              {wholeDollars(netWorthHistory.latestValue)}
+            </div>
+            <div
+              style={{
+                color: netWorthHistory.change >= 0 ? "#00f59b" : "#ff5d7a",
+                fontSize: 13,
+                fontWeight: 800,
+                marginTop: 6,
+              }}
+            >
+              {netWorthHistory.entries.length > 1
+                ? `${netWorthHistory.change >= 0 ? "+" : "-"}${wholeDollars(
+                    Math.abs(netWorthHistory.change)
+                  )} over tracked period`
+                : "Daily history is building"}
+            </div>
+          </div>
+          <button
+            onClick={() => setActiveTab("Add Accounts")}
+            style={{
+              background: "rgba(0,136,255,.12)",
+              border: "1px solid rgba(0,216,255,.28)",
+              color: "#d7ebff",
+              borderRadius: 8,
+              padding: "10px 14px",
+              cursor: "pointer",
+              fontWeight: 700,
+              whiteSpace: "nowrap",
+            }}
+          >
+            View Accounts
+          </button>
+        </div>
+
+        {netWorthHistory.points.length > 1 ? (
+          <div style={{ position: "relative", padding: "8px 0 24px" }}>
+            <svg
+              viewBox={`0 0 ${NET_WORTH_HISTORY_W} ${NET_WORTH_HISTORY_H}`}
+              style={{ width: "100%", overflow: "visible" }}
+              preserveAspectRatio="none"
+            >
+              <defs>
+                <linearGradient id="net-worth-history-fill" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor="#00d8ff" stopOpacity="0.22" />
+                  <stop offset="100%" stopColor="#00d8ff" stopOpacity="0.02" />
+                </linearGradient>
+              </defs>
+              {[0, 0.25, 0.5, 0.75, 1].map((ratio) => (
+                <line
+                  key={ratio}
+                  x1={0}
+                  y1={ratio * NET_WORTH_HISTORY_H}
+                  x2={NET_WORTH_HISTORY_W}
+                  y2={ratio * NET_WORTH_HISTORY_H}
+                  stroke="rgba(0,136,255,.10)"
+                  strokeWidth={1}
+                />
+              ))}
+              <path d={netWorthHistory.areaPath} fill="url(#net-worth-history-fill)" />
+              <path
+                d={netWorthHistory.linePath}
+                fill="none"
+                stroke="#00d8ff"
+                strokeWidth="3"
+                strokeLinejoin="round"
+                strokeLinecap="round"
+              />
+              <circle
+                cx={netWorthHistory.points[netWorthHistory.points.length - 1][0]}
+                cy={netWorthHistory.points[netWorthHistory.points.length - 1][1]}
+                r="4"
+                fill="#8feaff"
+              />
+            </svg>
+
+            <div
+              style={{
+                position: "absolute",
+                left: 0,
+                right: 0,
+                bottom: 0,
+                display: "flex",
+                justifyContent: "space-between",
+                color: "#8fb1d9",
+                fontSize: 12,
+              }}
+            >
+              {netWorthHistory.labels.map((label) => (
+                <span key={label}>{formatSnapshotLabel(label)}</span>
+              ))}
+            </div>
+          </div>
+        ) : (
+          <div style={{ color: "#8ea8ca", fontSize: 14, paddingTop: 8 }}>
+            Keep using the app daily to build a net worth trendline from tracked snapshots.
+          </div>
+        )}
+      </section>
+
       <section
         style={{ display: "grid", gridTemplateColumns: "1fr 1.08fr", gap: 16, marginTop: 16 }}
       >
@@ -828,6 +1029,9 @@ export function DashboardView({
           <div
             style={{
               display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+              gap: 18,
               marginBottom: 16,
             }}
           >
@@ -839,6 +1043,21 @@ export function DashboardView({
                 Budgeted plan vs actual spending across your highest-impact categories.
               </div>
             </div>
+            <button
+              onClick={() => setActiveTab("Budget Command Center")}
+              style={{
+                background: "rgba(0,136,255,.12)",
+                border: "1px solid rgba(0,216,255,.28)",
+                color: "#d7ebff",
+                borderRadius: 8,
+                padding: "10px 14px",
+                cursor: "pointer",
+                fontWeight: 700,
+                whiteSpace: "nowrap",
+              }}
+            >
+              Open Budget Center
+            </button>
           </div>
 
           <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 14 }}>

@@ -1,14 +1,9 @@
 import { useEffect, useState } from "react";
-import {
-  budgetMonths,
-  incomeStreamSeed,
-  initialAccounts,
-  initialBudgetCategories,
-  initialSubscriptions,
-  mockTransactions,
-} from "./data/constants.jsx";
+import { budgetMonths } from "./data/constants.jsx";
 import { styles } from "./styles.js";
 import { money, parseMoney } from "./utils/format.js";
+import { accountSupportsTransactions, normalizeAccount } from "./utils/accounts.js";
+import { loadPersistedAppState, persistAppState } from "./utils/appState.js";
 import {
   calculateCryptoBalance,
   fetchCryptoQuotes,
@@ -34,7 +29,6 @@ function normalizeCryptoPrice(value) {
 
 const LIQUID_ACCOUNT_TYPES = new Set(["Checking", "Savings", "Manual Cash"]);
 const CRYPTO_PRICE_SOURCE = "CoinGecko";
-const METRIC_SNAPSHOT_STORAGE_KEY = "fff-dashboard-metric-snapshots-v1";
 const THIRTY_DAY_WINDOW = 30;
 const SNAPSHOT_RETENTION_DAYS = 45;
 
@@ -43,18 +37,6 @@ function getLocalDateKey(date = new Date()) {
   const month = String(date.getMonth() + 1).padStart(2, "0");
   const day = String(date.getDate()).padStart(2, "0");
   return `${year}-${month}-${day}`;
-}
-
-function readMetricSnapshots() {
-  if (typeof window === "undefined") return {};
-
-  try {
-    const stored = window.localStorage.getItem(METRIC_SNAPSHOT_STORAGE_KEY);
-    const parsed = stored ? JSON.parse(stored) : {};
-    return parsed && typeof parsed === "object" ? parsed : {};
-  } catch {
-    return {};
-  }
 }
 
 function trimMetricSnapshots(snapshots) {
@@ -110,17 +92,20 @@ function buildTrackedMetricMeta(snapshots, metricKey, currentValue, increaseIsGo
 }
 
 function ForwardFreedomDashboard() {
+  const [initialAppState] = useState(() => loadPersistedAppState());
   const [currentView, setCurrentView] = useState("landing");
-  const [accounts, setAccounts] = useState(initialAccounts);
-  const [transactions, setTransactions] = useState(mockTransactions);
+  const [accounts, setAccounts] = useState(initialAppState.accounts);
+  const [transactions, setTransactions] = useState(initialAppState.transactions);
   const [selectedAccount, setSelectedAccount] = useState(null);
-  const [budgetRows, setBudgetRows] = useState(initialBudgetCategories);
-  const [incomeStreams, setIncomeStreams] = useState(incomeStreamSeed);
-  const [projectionAdjustments, setProjectionAdjustments] = useState({});
-  const [subscriptions, setSubscriptions] = useState(initialSubscriptions);
-  const [activeTab, setActiveTab] = useState("Dashboard");
-  const [activeRange, setActiveRange] = useState("ALL");
-  const [metricSnapshots, setMetricSnapshots] = useState(() => readMetricSnapshots());
+  const [budgetRows, setBudgetRows] = useState(initialAppState.budgetRows);
+  const [incomeStreams, setIncomeStreams] = useState(initialAppState.incomeStreams);
+  const [projectionAdjustments, setProjectionAdjustments] = useState(
+    initialAppState.projectionAdjustments
+  );
+  const [subscriptions, setSubscriptions] = useState(initialAppState.subscriptions);
+  const [activeTab, setActiveTab] = useState(initialAppState.activeTab);
+  const [activeRange, setActiveRange] = useState(initialAppState.activeRange);
+  const [metricSnapshots, setMetricSnapshots] = useState(initialAppState.metricSnapshots);
 
   const liquidCash = accounts
     .filter((account) => LIQUID_ACCOUNT_TYPES.has(account.type))
@@ -215,8 +200,6 @@ function ForwardFreedomDashboard() {
   ];
 
   useEffect(() => {
-    if (typeof window === "undefined") return;
-
     const todayKey = getLocalDateKey();
     const todaysSnapshot = {
       liquidCash: roundCurrency(liquidCash),
@@ -235,14 +218,36 @@ function ForwardFreedomDashboard() {
         return current;
       }
 
-      const nextSnapshots = trimMetricSnapshots({
+      return trimMetricSnapshots({
         ...current,
         [todayKey]: todaysSnapshot,
       });
-      window.localStorage.setItem(METRIC_SNAPSHOT_STORAGE_KEY, JSON.stringify(nextSnapshots));
-      return nextSnapshots;
     });
   }, [creditCardDebt, liquidCash, totalNetWorth]);
+
+  useEffect(() => {
+    persistAppState({
+      accounts,
+      transactions,
+      budgetRows,
+      incomeStreams,
+      projectionAdjustments,
+      subscriptions,
+      activeTab,
+      activeRange,
+      metricSnapshots,
+    });
+  }, [
+    accounts,
+    transactions,
+    budgetRows,
+    incomeStreams,
+    projectionAdjustments,
+    subscriptions,
+    activeTab,
+    activeRange,
+    metricSnapshots,
+  ]);
 
   const dynamicMetrics = [
     {
@@ -250,12 +255,14 @@ function ForwardFreedomDashboard() {
       title: "LIQUID CASH",
       value: money(liquidCash),
       ...buildTrackedMetricMeta(metricSnapshots, "liquidCash", liquidCash, true),
+      onClick: () => setActiveTab("Add Accounts"),
     },
     {
       icon: "▭",
       title: "CREDIT CARD DEBT",
       value: money(creditCardDebt),
       ...buildTrackedMetricMeta(metricSnapshots, "creditCardDebt", creditCardDebt, false),
+      onClick: () => setActiveTab("Add Accounts"),
     },
     {
       icon: "⌁",
@@ -265,12 +272,14 @@ function ForwardFreedomDashboard() {
       changeColor: monthlyFlow >= 0 ? "#00f59b" : "#ff355d",
       changeIcon: monthlyFlow >= 0 ? "↑" : "↓",
       subLabel: "current month plan",
+      onClick: () => setActiveTab("Budget Command Center"),
     },
     {
       icon: "▰",
       title: "NET WORTH",
       value: money(totalNetWorth),
       ...buildTrackedMetricMeta(metricSnapshots, "totalNetWorth", totalNetWorth, true),
+      onClick: () => setActiveTab("Add Accounts"),
     },
   ];
 
@@ -365,7 +374,7 @@ function ForwardFreedomDashboard() {
       },
     ];
 
-    setAccounts((current) => [...current, newAccount]);
+    setAccounts((current) => [...current, normalizeAccount(newAccount, current.length)]);
     setTransactions((current) => [...newTransactions, ...current]);
     setActiveTab("Transactions");
   };
@@ -376,6 +385,19 @@ function ForwardFreedomDashboard() {
     institution,
     balance,
     quantity,
+    metalType,
+    metalCustomName,
+    metalUnit,
+    pricePerUnit,
+    valuationSource,
+    lastValuedAt,
+    propertyAddress,
+    propertyType,
+    linkedLoanId,
+    linkedPropertyId,
+    loanCategory,
+    interestRate,
+    monthlyPayment,
     cryptoAssetId,
     cryptoName,
     cryptoSymbol,
@@ -390,6 +412,13 @@ function ForwardFreedomDashboard() {
       institution: institution || "Manual",
       balance: roundCurrency(balance),
       status: "Manual",
+      propertyAddress: propertyAddress || "",
+      propertyType: propertyType || "",
+      linkedLoanId: linkedLoanId || "",
+      linkedPropertyId: linkedPropertyId || "",
+      loanCategory: loanCategory || "",
+      interestRate: interestRate || "",
+      monthlyPayment: monthlyPayment || "",
     };
 
     if (type === "Crypto" && cryptoAssetId) {
@@ -405,7 +434,19 @@ function ForwardFreedomDashboard() {
       });
     }
 
-    setAccounts((current) => [...current, newAccount]);
+    if (type === "Precious Metals") {
+      Object.assign(newAccount, {
+        quantity: Number(quantity) || 0,
+        metalType: metalType || "Gold",
+        metalCustomName: metalCustomName || "",
+        metalUnit: metalUnit || "oz",
+        pricePerUnit: Number(pricePerUnit) || 0,
+        valuationSource: valuationSource || "Manual",
+        lastValuedAt: Number(lastValuedAt) || Date.now(),
+      });
+    }
+
+    setAccounts((current) => [...current, normalizeAccount(newAccount, current.length)]);
     openAccountTransactions(name);
   };
 
@@ -428,7 +469,7 @@ function ForwardFreedomDashboard() {
     const amount = roundCurrency(transaction.amount);
 
     if (!targetAccount || !Number.isFinite(amount) || amount === 0) return false;
-    if (targetAccount.type === "Crypto") return false;
+    if (!accountSupportsTransactions(targetAccount)) return false;
 
     setTransactions((current) => [
       {
@@ -522,6 +563,7 @@ function ForwardFreedomDashboard() {
             <DashboardView
               activeRange={activeRange}
               setActiveRange={setActiveRange}
+              setActiveTab={setActiveTab}
               trueCash={trueCash}
               transactions={transactions}
               incomeStreams={incomeStreams}
@@ -529,6 +571,7 @@ function ForwardFreedomDashboard() {
               projectionAdjustments={projectionAdjustments}
               dynamicMetrics={dynamicMetrics}
               dynamicAllocations={dynamicAllocations}
+              metricSnapshots={metricSnapshots}
             />
           ) : activeTab === "Budget Command Center" ? (
             <BudgetCommandCenter

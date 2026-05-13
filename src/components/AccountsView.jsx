@@ -2,39 +2,37 @@ import { useEffect, useState } from "react";
 import { styles } from "../styles.js";
 import { money } from "../utils/format.js";
 import {
+  ACCOUNT_GROUPS,
+  ACCOUNT_TYPES,
+  PRECIOUS_METAL_TYPES,
+  PRECIOUS_METAL_UNITS,
+  calculatePreciousMetalsBalance,
+} from "../utils/accounts.js";
+import {
   calculateCryptoBalance,
   fetchCryptoQuotes,
   normalizeCryptoQuantity,
   searchCryptoAssets,
 } from "../utils/cryptoPricing.js";
 
-const accountGroups = [
-  { title: "Checking", filter: (a) => a.type === "Checking" },
-  { title: "Savings", filter: (a) => a.type === "Savings" },
-  { title: "Investments", filter: (a) => a.type === "Investment" },
-  { title: "Crypto", filter: (a) => a.type === "Crypto" },
-  { title: "Precious Metals", filter: (a) => a.type === "Precious Metals" },
-  { title: "Real Estate", filter: (a) => a.type === "Real Estate" },
-  { title: "Retirement", filter: (a) => a.type === "Retirement" },
-  { title: "Credit Cards", filter: (a) => a.type === "Credit Card" },
-  { title: "Mortgages / Loans", filter: (a) => a.type === "Mortgages / Loans" },
-  { title: "Other / Cash", filter: (a) => a.type === "Manual Cash" },
-];
-
-const ACCOUNT_TYPES = [
-  "Checking",
-  "Savings",
-  "Credit Card",
-  "Investment",
-  "Crypto",
-  "Precious Metals",
-  "Real Estate",
-  "Retirement",
-  "Mortgages / Loans",
-  "Manual Cash",
-];
-
-const EMPTY_FORM = { name: "", type: "Checking", institution: "", balance: "", quantity: "" };
+const EMPTY_FORM = {
+  name: "",
+  type: "Checking",
+  institution: "",
+  balance: "",
+  quantity: "",
+  metalType: "Gold",
+  metalCustomName: "",
+  metalUnit: "oz",
+  pricePerUnit: "",
+  propertyAddress: "",
+  propertyType: "Primary Residence",
+  linkedLoanId: "",
+  linkedPropertyId: "",
+  loanCategory: "Mortgage",
+  interestRate: "",
+  monthlyPayment: "",
+};
 
 function parseBalance(raw) {
   const str = String(raw).trim();
@@ -97,12 +95,22 @@ export function AccountsView({
   const linkedBalance = accounts.reduce((sum, a) => sum + a.balance, 0);
   const update = (field, value) => setForm((f) => ({ ...f, [field]: value }));
   const isCryptoAccount = form.type === "Crypto";
+  const isPreciousMetalsAccount = form.type === "Precious Metals";
+  const isRealEstateAccount = form.type === "Real Estate";
+  const isLoanAccount = form.type === "Mortgages / Loans";
+  const realEstateAccounts = accounts.filter((account) => account.type === "Real Estate");
+  const loanAccounts = accounts.filter((account) => account.type === "Mortgages / Loans");
 
   const parsedBalance = parseBalance(form.balance);
   const parsedQuantity = normalizeCryptoQuantity(form.quantity);
+  const parsedPricePerUnit = parseBalance(form.pricePerUnit);
   const derivedCryptoBalance = selectedCryptoQuote
     ? calculateCryptoBalance(parsedQuantity, selectedCryptoQuote.priceUsd)
     : 0;
+  const derivedPreciousMetalsBalance = calculatePreciousMetalsBalance(
+    parsedQuantity,
+    parsedPricePerUnit
+  );
   const canSubmit =
     form.name.trim().length > 0 &&
     form.type.length > 0 &&
@@ -112,6 +120,13 @@ export function AccountsView({
         Number.isFinite(parsedQuantity) &&
         parsedQuantity > 0 &&
         selectedCryptoQuote
+      : isPreciousMetalsAccount
+        ? form.quantity.trim().length > 0 &&
+          Number.isFinite(parsedQuantity) &&
+          parsedQuantity > 0 &&
+          form.pricePerUnit.trim().length > 0 &&
+          Number.isFinite(parsedPricePerUnit) &&
+          parsedPricePerUnit > 0
       : form.balance.trim().length > 0 && Number.isFinite(parsedBalance));
 
   useEffect(() => {
@@ -245,11 +260,36 @@ export function AccountsView({
       return;
     }
 
+    if (isPreciousMetalsAccount) {
+      addManualAccount({
+        name: form.name.trim(),
+        type: form.type,
+        institution: form.institution.trim() || "Manual Valuation",
+        balance: derivedPreciousMetalsBalance,
+        metalType: form.metalType,
+        metalCustomName: form.metalCustomName.trim(),
+        metalUnit: form.metalUnit,
+        quantity: parsedQuantity,
+        pricePerUnit: parsedPricePerUnit,
+        valuationSource: "Manual",
+        lastValuedAt: Date.now(),
+      });
+      closeModal();
+      return;
+    }
+
     addManualAccount({
       name: form.name.trim(),
       type: form.type,
       institution: form.institution.trim() || form.type,
       balance: parsedBalance,
+      propertyAddress: form.propertyAddress.trim(),
+      propertyType: form.propertyType,
+      linkedLoanId: form.linkedLoanId,
+      linkedPropertyId: form.linkedPropertyId,
+      loanCategory: form.loanCategory,
+      interestRate: form.interestRate.trim(),
+      monthlyPayment: form.monthlyPayment.trim(),
     });
     closeModal();
   };
@@ -433,7 +473,7 @@ export function AccountsView({
       {/* Account list */}
       <section style={{ ...styles.panel, padding: 24 }}>
         <div style={{ height: 4 }} />
-        {accountGroups.map((group) => {
+        {ACCOUNT_GROUPS.map((group) => {
           const grouped = accounts.filter(group.filter);
           if (grouped.length === 0) return null;
           return (
@@ -469,7 +509,7 @@ export function AccountsView({
               >
                 {grouped.map((account) => (
                   <div
-                    key={account.name}
+                    key={account.id}
                     onClick={() => openAccountTransactions(account.name)}
                     style={{
                       border: "1px solid rgba(0,136,255,.22)",
@@ -492,6 +532,43 @@ export function AccountsView({
                           <div style={{ color: "#5fd6ff", marginTop: 6, fontSize: 13 }}>
                             {formatCryptoQuantity(account.quantity)} {account.cryptoSymbol} @{" "}
                             {formatCryptoPrice(account.lastPriceUsd || 0)} • {formatLastUpdated(account.lastPriceUpdatedAt)}
+                          </div>
+                        ) : null}
+                        {account.type === "Precious Metals" ? (
+                          <div style={{ color: "#f6d48d", marginTop: 6, fontSize: 13 }}>
+                            {formatCryptoQuantity(account.quantity)} {account.metalUnit}{" "}
+                            {account.metalType === "Custom" && account.metalCustomName
+                              ? account.metalCustomName
+                              : account.metalType}{" "}
+                            @ {money(account.pricePerUnit || 0)} / {account.metalUnit} •{" "}
+                            {formatLastUpdated(account.lastValuedAt)}
+                          </div>
+                        ) : null}
+                        {account.type === "Real Estate" && account.propertyAddress ? (
+                          <div style={{ color: "#8feaff", marginTop: 6, fontSize: 13 }}>
+                            {account.propertyType} • {account.propertyAddress}
+                          </div>
+                        ) : null}
+                        {account.type === "Real Estate" && account.linkedLoanId ? (
+                          <div style={{ color: "#7bc7ff", marginTop: 4, fontSize: 12 }}>
+                            Linked loan:{" "}
+                            {loanAccounts.find((loanAccount) => loanAccount.id === account.linkedLoanId)?.name ||
+                              "Saved link"}
+                          </div>
+                        ) : null}
+                        {account.type === "Mortgages / Loans" ? (
+                          <div style={{ color: "#ffb6a0", marginTop: 6, fontSize: 13 }}>
+                            {account.loanCategory}
+                            {account.interestRate ? ` • ${account.interestRate}% APR` : ""}
+                            {account.monthlyPayment ? ` • ${account.monthlyPayment}/mo` : ""}
+                          </div>
+                        ) : null}
+                        {account.type === "Mortgages / Loans" && account.linkedPropertyId ? (
+                          <div style={{ color: "#ffc9bd", marginTop: 4, fontSize: 12 }}>
+                            Linked property:{" "}
+                            {realEstateAccounts.find(
+                              (propertyAccount) => propertyAccount.id === account.linkedPropertyId
+                            )?.name || "Saved link"}
                           </div>
                         ) : null}
                       </div>
@@ -609,6 +686,12 @@ export function AccountsView({
                   placeholder={
                     isCryptoAccount
                       ? "e.g. XRP Wallet, Coinbase XRP, Cold Storage"
+                      : isPreciousMetalsAccount
+                        ? "e.g. Gold Stack, Silver Vault, Family Bullion"
+                        : isRealEstateAccount
+                          ? "e.g. Main Home Equity, Lake House Equity"
+                          : isLoanAccount
+                            ? "e.g. Home Mortgage, Rental Loan, HELOC"
                       : "e.g. Chase Checking, Home Safe, Cash Envelope"
                   }
                   onChange={(e) => update("name", e.target.value)}
@@ -636,12 +719,26 @@ export function AccountsView({
 
                 <label style={labelStyle}>
                   <span style={labelCapStyle}>
-                    {isCryptoAccount ? "Wallet / Exchange" : "Bank / Institution"}
+                    {isCryptoAccount
+                      ? "Wallet / Exchange"
+                      : isRealEstateAccount
+                        ? "Property Label"
+                        : isLoanAccount
+                          ? "Lender / Institution"
+                          : "Bank / Institution"}
                   </span>
                   <input
                     type="text"
                     value={form.institution}
-                    placeholder={isCryptoAccount ? "e.g. Coinbase, Ledger, Kraken" : "Bank name or label"}
+                    placeholder={
+                      isCryptoAccount
+                        ? "e.g. Coinbase, Ledger, Kraken"
+                        : isRealEstateAccount
+                          ? "e.g. Personal Portfolio, Family Holdings"
+                          : isLoanAccount
+                            ? "e.g. Wells Fargo, Rocket Mortgage"
+                            : "Bank name or label"
+                    }
                     onChange={(e) => update("institution", e.target.value)}
                     style={inputStyle}
                   />
@@ -799,6 +896,213 @@ export function AccountsView({
                       ) : null}
                     </div>
                   ) : null}
+                </>
+              ) : isPreciousMetalsAccount ? (
+                <>
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
+                    <label style={labelStyle}>
+                      <span style={labelCapStyle}>Metal Type</span>
+                      <select
+                        value={form.metalType}
+                        onChange={(e) => update("metalType", e.target.value)}
+                        style={inputStyle}
+                      >
+                        {PRECIOUS_METAL_TYPES.map((metal) => (
+                          <option key={metal} value={metal} style={{ background: "#061224" }}>
+                            {metal}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+
+                    <label style={labelStyle}>
+                      <span style={labelCapStyle}>Unit</span>
+                      <select
+                        value={form.metalUnit}
+                        onChange={(e) => update("metalUnit", e.target.value)}
+                        style={inputStyle}
+                      >
+                        {PRECIOUS_METAL_UNITS.map((unit) => (
+                          <option key={unit} value={unit} style={{ background: "#061224" }}>
+                            {unit}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                  </div>
+
+                  {form.metalType === "Custom" ? (
+                    <label style={labelStyle}>
+                      <span style={labelCapStyle}>Custom Metal Name</span>
+                      <input
+                        type="text"
+                        value={form.metalCustomName}
+                        placeholder="e.g. Rhodium"
+                        onChange={(e) => update("metalCustomName", e.target.value)}
+                        style={inputStyle}
+                      />
+                    </label>
+                  ) : null}
+
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
+                    <label style={labelStyle}>
+                      <span style={labelCapStyle}>Quantity</span>
+                      <input
+                        type="text"
+                        value={form.quantity}
+                        placeholder={`e.g. 12 ${form.metalUnit}`}
+                        onChange={(e) => update("quantity", e.target.value)}
+                        style={inputStyle}
+                      />
+                    </label>
+
+                    <label style={labelStyle}>
+                      <span style={labelCapStyle}>Price Per {form.metalUnit.toUpperCase()}</span>
+                      <input
+                        type="text"
+                        value={form.pricePerUnit}
+                        placeholder="e.g. 2350"
+                        onChange={(e) => update("pricePerUnit", e.target.value)}
+                        style={inputStyle}
+                      />
+                    </label>
+                  </div>
+
+                  <div style={{ color: "#d7ebff", fontSize: 13, lineHeight: 1.55 }}>
+                    Manual valuation: <b>{money(derivedPreciousMetalsBalance)}</b>
+                  </div>
+                </>
+              ) : isRealEstateAccount ? (
+                <>
+                  <label style={labelStyle}>
+                    <span style={labelCapStyle}>Property Address / Label</span>
+                    <input
+                      type="text"
+                      value={form.propertyAddress}
+                      placeholder="e.g. 122 Oak Street, Lake House, Rental #2"
+                      onChange={(e) => update("propertyAddress", e.target.value)}
+                      style={inputStyle}
+                    />
+                  </label>
+
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
+                    <label style={labelStyle}>
+                      <span style={labelCapStyle}>Property Type</span>
+                      <input
+                        type="text"
+                        value={form.propertyType}
+                        placeholder="e.g. Primary Residence, Rental, Vacation Home"
+                        onChange={(e) => update("propertyType", e.target.value)}
+                        style={inputStyle}
+                      />
+                    </label>
+
+                    <label style={labelStyle}>
+                      <span style={labelCapStyle}>Linked Mortgage / Loan</span>
+                      <select
+                        value={form.linkedLoanId}
+                        onChange={(e) => update("linkedLoanId", e.target.value)}
+                        style={inputStyle}
+                      >
+                        <option value="" style={{ background: "#061224" }}>
+                          Not linked yet
+                        </option>
+                        {loanAccounts.map((account) => (
+                          <option key={account.id} value={account.id} style={{ background: "#061224" }}>
+                            {account.name}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                  </div>
+
+                  <label style={labelStyle}>
+                    <span style={labelCapStyle}>Current Equity</span>
+                    <input
+                      type="text"
+                      value={form.balance}
+                      placeholder="e.g. 185000"
+                      onChange={(e) => update("balance", e.target.value)}
+                      style={inputStyle}
+                    />
+                    <span style={{ color: "#7294bb", fontSize: 12 }}>
+                      Enter the current equity only, not the full market value of the property.
+                    </span>
+                  </label>
+                </>
+              ) : isLoanAccount ? (
+                <>
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
+                    <label style={labelStyle}>
+                      <span style={labelCapStyle}>Loan Category</span>
+                      <input
+                        type="text"
+                        value={form.loanCategory}
+                        placeholder="e.g. Mortgage, HELOC, Personal Loan"
+                        onChange={(e) => update("loanCategory", e.target.value)}
+                        style={inputStyle}
+                      />
+                    </label>
+
+                    <label style={labelStyle}>
+                      <span style={labelCapStyle}>Linked Property</span>
+                      <select
+                        value={form.linkedPropertyId}
+                        onChange={(e) => update("linkedPropertyId", e.target.value)}
+                        style={inputStyle}
+                      >
+                        <option value="" style={{ background: "#061224" }}>
+                          Not linked yet
+                        </option>
+                        {realEstateAccounts.map((account) => (
+                          <option key={account.id} value={account.id} style={{ background: "#061224" }}>
+                            {account.name}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                  </div>
+
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
+                    <label style={labelStyle}>
+                      <span style={labelCapStyle}>Interest Rate (%)</span>
+                      <input
+                        type="text"
+                        value={form.interestRate}
+                        placeholder="e.g. 6.25"
+                        onChange={(e) => update("interestRate", e.target.value)}
+                        style={inputStyle}
+                      />
+                    </label>
+
+                    <label style={labelStyle}>
+                      <span style={labelCapStyle}>Monthly Payment</span>
+                      <input
+                        type="text"
+                        value={form.monthlyPayment}
+                        placeholder="e.g. 1850"
+                        onChange={(e) => update("monthlyPayment", e.target.value)}
+                        style={inputStyle}
+                      />
+                    </label>
+                  </div>
+
+                  <label style={labelStyle}>
+                    <span style={labelCapStyle}>Current Balance</span>
+                    <input
+                      type="text"
+                      value={form.balance}
+                      placeholder="e.g. -225000"
+                      onChange={(e) => update("balance", e.target.value)}
+                      style={{
+                        ...inputStyle,
+                        color: form.balance.trim().startsWith("-") ? "#ff8fa3" : "#eaf3ff",
+                      }}
+                    />
+                    <span style={{ color: "#7294bb", fontSize: 12 }}>
+                      Use a negative value for what is still owed on the loan.
+                    </span>
+                  </label>
                 </>
               ) : (
                 <label style={labelStyle}>

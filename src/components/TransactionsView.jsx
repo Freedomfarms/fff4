@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { transactionCategoryOptions } from "../data/constants.jsx";
 import { styles } from "../styles.js";
 import { money } from "../utils/format.js";
+import { accountSupportsTransactions } from "../utils/accounts.js";
 
 function formatManualDate(value) {
   if (!value) return "";
@@ -37,12 +38,12 @@ export function TransactionsView({
   const selectedAccountRecord = selectedAccount
     ? accounts.find((account) => account.name === selectedAccount) || null
     : null;
-  const transactionCapableAccounts = accounts.filter((account) => account.type !== "Crypto");
+  const transactionCapableAccounts = accounts.filter((account) => accountSupportsTransactions(account));
   const [manualForm, setManualForm] = useState({
     date: "2026-05-13",
     merchant: "",
     account:
-      selectedAccountRecord?.type !== "Crypto"
+      accountSupportsTransactions(selectedAccountRecord)
         ? selectedAccount || transactionCapableAccounts[0]?.name || ""
         : transactionCapableAccounts[0]?.name || "",
     amount: "",
@@ -65,9 +66,11 @@ export function TransactionsView({
     .filter((tx) => tx.amount > 0)
     .reduce((sum, tx) => sum + tx.amount, 0);
   const selectedCategory = manualForm.category || categoryOptions[0] || "Other";
-  const isSelectedCryptoAccount = selectedAccountRecord?.type === "Crypto";
+  const isSelectedNonTransactionalAccount = selectedAccountRecord
+    ? !accountSupportsTransactions(selectedAccountRecord)
+    : false;
   const canAddManualTransaction =
-    !isSelectedCryptoAccount &&
+    !isSelectedNonTransactionalAccount &&
     manualForm.date &&
     manualForm.merchant.trim() &&
     manualForm.account.trim() &&
@@ -76,10 +79,10 @@ export function TransactionsView({
     parseManualAmount(manualForm.amount) !== 0;
 
   useEffect(() => {
-    if (isSelectedCryptoAccount) return;
+    if (isSelectedNonTransactionalAccount) return;
 
     const nextDefaultAccount =
-      selectedAccountRecord?.type !== "Crypto"
+      accountSupportsTransactions(selectedAccountRecord)
         ? selectedAccountRecord?.name
         : transactionCapableAccounts[0]?.name || "";
 
@@ -88,7 +91,12 @@ export function TransactionsView({
         ? current
         : { ...current, account: nextDefaultAccount }
     );
-  }, [isSelectedCryptoAccount, selectedAccount, selectedAccountRecord, transactionCapableAccounts]);
+  }, [
+    isSelectedNonTransactionalAccount,
+    selectedAccount,
+    selectedAccountRecord,
+    transactionCapableAccounts,
+  ]);
 
   const updateManualForm = (field, value) => {
     setManualForm((current) => ({ ...current, [field]: value }));
@@ -205,7 +213,7 @@ export function TransactionsView({
         </div>
       </div>
 
-      {isSelectedCryptoAccount ? (
+      {isSelectedNonTransactionalAccount ? (
         <div
           style={{
             ...styles.panel,
@@ -215,11 +223,15 @@ export function TransactionsView({
             boxShadow: "inset 0 0 22px rgba(0,136,255,.06)",
           }}
         >
-          <div style={{ color: "white", fontSize: 20, fontWeight: 900 }}>Crypto Account Pricing</div>
+          <div style={{ color: "white", fontSize: 20, fontWeight: 900 }}>Account Valuation</div>
           <div style={{ color: "#8ea8ca", fontSize: 13, marginTop: 8, lineHeight: 1.6 }}>
-            Crypto accounts are quantity-based in this MVP. Their balance comes from the stored
-            holding quantity multiplied by the latest market price, so manual transaction entry is
-            disabled to keep the account value in sync with the live quote.
+            {selectedAccountRecord?.type === "Crypto"
+              ? "Crypto accounts are quantity-based. Their balance comes from the stored holding quantity multiplied by the latest market price, so manual transaction entry is disabled to keep the account value in sync with the live quote."
+              : selectedAccountRecord?.type === "Precious Metals"
+                ? "Precious metals accounts are valuation-based. Their balance comes from quantity and manual spot pricing, so transaction entry is disabled to keep the holding value clean."
+                : selectedAccountRecord?.type === "Real Estate"
+                  ? "Real estate accounts track equity instead of cashflow, so transaction entry is disabled on the property valuation record."
+                  : "Mortgage and loan accounts track liabilities directly, so transaction entry is disabled on the balance record."}
           </div>
         </div>
       ) : (
