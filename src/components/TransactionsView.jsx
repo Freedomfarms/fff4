@@ -229,7 +229,7 @@ export function TransactionsView({
         <div
           style={{
             display: "grid",
-            gridTemplateColumns: "150px 1.2fr 1fr 1fr 130px",
+            gridTemplateColumns: "150px 1.08fr .9fr .4fr 130px",
             gap: 12,
             alignItems: "center",
           }}
@@ -405,7 +405,7 @@ export function TransactionsView({
           style={{
             display: "grid",
             gridTemplateColumns: "140px 1.4fr 1fr 1fr 160px",
-            padding: "0 18px 16px",
+            padding: "0 16px 12px",
             color: "#7294bb",
             fontSize: 13,
             textTransform: "uppercase",
@@ -428,7 +428,7 @@ export function TransactionsView({
                 display: "grid",
                 gridTemplateColumns: "140px 1.4fr 1fr 1fr 160px",
                 alignItems: "center",
-                padding: "18px",
+                padding: "12px 16px",
                 borderBottom: "1px solid rgba(0,136,255,.08)",
                 background: index % 2 === 0 ? "rgba(255,255,255,.01)" : "transparent",
               }}
