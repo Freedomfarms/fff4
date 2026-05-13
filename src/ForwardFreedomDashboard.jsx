@@ -306,7 +306,7 @@ function ForwardFreedomDashboard() {
           ) : activeTab === "Transactions" ? (
             <TransactionsView
               accounts={accounts}
-              transactions={transactions}
+              budgetRows={budgetRows}
               selectedAccount={selectedAccount}
               visibleTransactions={visibleTransactions}
               setActiveTab={setActiveTab}

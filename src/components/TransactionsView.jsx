@@ -4,6 +4,7 @@ import { money } from "../utils/format.js";
 
 export function TransactionsView({
   accounts,
+  budgetRows,
   selectedAccount,
   visibleTransactions,
   setActiveTab,
@@ -11,6 +12,14 @@ export function TransactionsView({
   connectMockPlaidAccount,
   updateTransactionCategory,
 }) {
+  const categoryOptions = Array.from(
+    new Set([
+      ...transactionCategoryOptions,
+      ...budgetRows.flatMap((row) => row.transactionCategories || []),
+      ...budgetRows.map((row) => row.name).filter(Boolean),
+      ...visibleTransactions.map((tx) => tx.category).filter(Boolean),
+    ])
+  ).sort();
   const monthlySpend = visibleTransactions
     .filter((tx) => tx.amount < 0)
     .reduce((sum, tx) => sum + Math.abs(tx.amount), 0);
@@ -239,7 +248,7 @@ export function TransactionsView({
                   boxShadow: "inset 0 0 14px rgba(0,136,255,.08)",
                 }}
               >
-                {transactionCategoryOptions.map((category) => (
+                {categoryOptions.map((category) => (
                   <option
                     key={category}
                     value={category}
@@ -248,7 +257,7 @@ export function TransactionsView({
                     {category}
                   </option>
                 ))}
-                {!transactionCategoryOptions.includes(tx.category) ? (
+                {!categoryOptions.includes(tx.category) ? (
                   <option value={tx.category} style={{ background: "#061224", color: "#eaf3ff" }}>
                     {tx.category}
                   </option>

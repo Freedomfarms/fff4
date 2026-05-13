@@ -25,11 +25,12 @@ const MONTH_END_X = {
 };
 
 function trueCashToChartY(value, chartMax) {
-  return Math.max(0, Math.min(CHART_HEIGHT, CHART_HEIGHT - (value / chartMax) * CHART_HEIGHT));
+  const safeMax = Math.max(Number(chartMax) || 1, 1);
+  return Math.max(0, Math.min(CHART_HEIGHT, CHART_HEIGHT - (value / safeMax) * CHART_HEIGHT));
 }
 
 function buildChartMax(values) {
-  const highestValue = Math.max(...values.map((value) => Number(value) || 0), 1);
+  const highestValue = values.reduce((max, value) => Math.max(max, Number(value) || 0), 1);
   return Math.ceil((highestValue * 1.4) / 1000) * 1000;
 }
 
@@ -42,6 +43,8 @@ function buildYAxisLabels(chartMax) {
 }
 
 function buildProjectionAreaPath(points) {
+  if (points.length === 0) return "";
+
   const firstPoint = points[0];
   const lastPoint = points[points.length - 1];
   return (
@@ -83,17 +86,18 @@ export function DashboardView({
   };
   const linePath = buildLinePath(chart.points);
   const areaPath = buildAreaPath(chart.points);
-  const projectionStartPoint = projectionSchedule.length
-    ? {
-        x: chart.points[0][0],
-        y: chart.points[0][1],
-        date: `${chart.dates[0] || "Jan 1"} Projection Start`,
-        value: wholeDollars(parseMoney(chartValues.values[0] || chart.value)),
-        profit: 0,
-        adjustment: 0,
-        type: "projected",
-      }
-    : null;
+  const projectionStartPoint =
+    projectionSchedule.length && chart.points.length
+      ? {
+          x: chart.points[0][0],
+          y: chart.points[0][1],
+          date: `${chart.dates[0] || "Jan 1"} Projection Start`,
+          value: wholeDollars(parseMoney(chartValues.values[0] || chart.value)),
+          profit: 0,
+          adjustment: 0,
+          type: "projected",
+        }
+      : null;
   const projectedTrueCashPoints = projectionSchedule
     .filter((point) => point.type === "projected" && MONTH_END_X[point.month])
     .map((point) => ({
@@ -425,9 +429,17 @@ export function DashboardView({
                 const x = (cursorX / box.width) * 972;
                 const y = (cursorY / box.height) * CHART_HEIGHT;
                 let closest = combinedHoverPoints[0];
+                if (!closest) return;
+
                 combinedHoverPoints.forEach((point) => {
-                  const pointDistance = Math.hypot(point.x - x, point.y - y);
-                  const closestDistance = Math.hypot(closest.x - x, closest.y - y);
+                  const pointDistance = Math.hypot(
+                    (point.x - x) / 972,
+                    (point.y - y) / CHART_HEIGHT
+                  );
+                  const closestDistance = Math.hypot(
+                    (closest.x - x) / 972,
+                    (closest.y - y) / CHART_HEIGHT
+                  );
                   if (pointDistance < closestDistance) closest = point;
                 });
                 setHoverState({
