@@ -34,6 +34,80 @@ function normalizeCryptoPrice(value) {
 
 const LIQUID_ACCOUNT_TYPES = new Set(["Checking", "Savings", "Manual Cash"]);
 const CRYPTO_PRICE_SOURCE = "CoinGecko";
+const METRIC_SNAPSHOT_STORAGE_KEY = "fff-dashboard-metric-snapshots-v1";
+const THIRTY_DAY_WINDOW = 30;
+const SNAPSHOT_RETENTION_DAYS = 45;
+
+function getLocalDateKey(date = new Date()) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function readMetricSnapshots() {
+  if (typeof window === "undefined") return {};
+
+  try {
+    const stored = window.localStorage.getItem(METRIC_SNAPSHOT_STORAGE_KEY);
+    const parsed = stored ? JSON.parse(stored) : {};
+    return parsed && typeof parsed === "object" ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+function trimMetricSnapshots(snapshots) {
+  const sortedEntries = Object.entries(snapshots).sort(([a], [b]) => a.localeCompare(b));
+  return Object.fromEntries(sortedEntries.slice(-SNAPSHOT_RETENTION_DAYS));
+}
+
+function buildTrackedMetricMeta(snapshots, metricKey, currentValue, increaseIsGood = true) {
+  const thresholdDate = new Date();
+  thresholdDate.setDate(thresholdDate.getDate() - THIRTY_DAY_WINDOW);
+  const thresholdKey = getLocalDateKey(thresholdDate);
+  const comparisonKey = Object.keys(snapshots)
+    .sort()
+    .reverse()
+    .find(
+      (key) =>
+        key <= thresholdKey &&
+        snapshots[key] &&
+        typeof snapshots[key][metricKey] === "number"
+    );
+
+  if (!comparisonKey) {
+    return {
+      change: "Tracking 30-day baseline",
+      changeColor: "#8fb1d9",
+      changeIcon: "•",
+      subLabel: "daily tracking in progress",
+    };
+  }
+
+  const previousValue = Number(snapshots[comparisonKey][metricKey]) || 0;
+  const delta = roundCurrency(currentValue - previousValue);
+  const changeIcon = delta > 0 ? "↑" : delta < 0 ? "↓" : "→";
+
+  if (previousValue === 0) {
+    return {
+      change: `${delta >= 0 ? "+" : "-"}${money(Math.abs(delta))}`,
+      changeColor: "#8fb1d9",
+      changeIcon,
+      subLabel: `since ${comparisonKey}`,
+    };
+  }
+
+  const percentChange = Math.abs((delta / Math.abs(previousValue)) * 100);
+  const isGood = delta === 0 ? true : increaseIsGood ? delta >= 0 : delta <= 0;
+
+  return {
+    change: `${delta >= 0 ? "+" : "-"}${money(Math.abs(delta))} (${percentChange.toFixed(2)}%)`,
+    changeColor: isGood ? "#00f59b" : "#ff355d",
+    changeIcon,
+    subLabel: "vs last 30 days",
+  };
+}
 
 function ForwardFreedomDashboard() {
   const [currentView, setCurrentView] = useState("landing");
@@ -46,6 +120,7 @@ function ForwardFreedomDashboard() {
   const [subscriptions, setSubscriptions] = useState(initialSubscriptions);
   const [activeTab, setActiveTab] = useState("Dashboard");
   const [activeRange, setActiveRange] = useState("ALL");
+  const [metricSnapshots, setMetricSnapshots] = useState(() => readMetricSnapshots());
 
   const liquidCash = accounts
     .filter((account) => LIQUID_ACCOUNT_TYPES.has(account.type))
@@ -87,37 +162,6 @@ function ForwardFreedomDashboard() {
     .filter((r) => (r.months || budgetMonths).includes(currentMonth))
     .reduce((sum, r) => sum + Number(r.budget || 0), 0);
   const monthlyFlow = currentMonthIncome - currentMonthBudget;
-
-  const dynamicMetrics = [
-    {
-      icon: "▱",
-      title: "LIQUID CASH",
-      value: money(liquidCash),
-      change: "$2,880.00 (5.58%)",
-      red: false,
-    },
-    {
-      icon: "▭",
-      title: "CREDIT CARD DEBT",
-      value: money(creditCardDebt),
-      change: "$740.00 (7.07%)",
-      red: true,
-    },
-    {
-      icon: "⌁",
-      title: "MONTHLY CASH FLOW",
-      value: money(monthlyFlow),
-      change: monthlyFlow >= 0 ? "Projected surplus" : "Projected deficit",
-      red: monthlyFlow < 0,
-    },
-    {
-      icon: "▰",
-      title: "INVESTMENT RETURN (YTD)",
-      value: "6.25%",
-      change: "1.14%",
-      red: false,
-    },
-  ];
 
   const totalNetWorth = Math.max(
     trueCash + investmentTotal + cryptoTotal + preciousMetalsTotal + realEstateTotal + retirementTotal,
@@ -167,6 +211,66 @@ function ForwardFreedomDashboard() {
       percent: pct(retirementTotal),
       color: "#ffb65d",
       valueNumber: retirementTotal,
+    },
+  ];
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const todayKey = getLocalDateKey();
+    const todaysSnapshot = {
+      liquidCash: roundCurrency(liquidCash),
+      creditCardDebt: roundCurrency(creditCardDebt),
+      totalNetWorth: roundCurrency(totalNetWorth),
+    };
+
+    setMetricSnapshots((current) => {
+      const existing = current[todayKey];
+      if (
+        existing &&
+        existing.liquidCash === todaysSnapshot.liquidCash &&
+        existing.creditCardDebt === todaysSnapshot.creditCardDebt &&
+        existing.totalNetWorth === todaysSnapshot.totalNetWorth
+      ) {
+        return current;
+      }
+
+      const nextSnapshots = trimMetricSnapshots({
+        ...current,
+        [todayKey]: todaysSnapshot,
+      });
+      window.localStorage.setItem(METRIC_SNAPSHOT_STORAGE_KEY, JSON.stringify(nextSnapshots));
+      return nextSnapshots;
+    });
+  }, [creditCardDebt, liquidCash, totalNetWorth]);
+
+  const dynamicMetrics = [
+    {
+      icon: "▱",
+      title: "LIQUID CASH",
+      value: money(liquidCash),
+      ...buildTrackedMetricMeta(metricSnapshots, "liquidCash", liquidCash, true),
+    },
+    {
+      icon: "▭",
+      title: "CREDIT CARD DEBT",
+      value: money(creditCardDebt),
+      ...buildTrackedMetricMeta(metricSnapshots, "creditCardDebt", creditCardDebt, false),
+    },
+    {
+      icon: "⌁",
+      title: "MONTHLY CASH FLOW",
+      value: money(monthlyFlow),
+      change: monthlyFlow >= 0 ? "Projected surplus" : "Projected deficit",
+      changeColor: monthlyFlow >= 0 ? "#00f59b" : "#ff355d",
+      changeIcon: monthlyFlow >= 0 ? "↑" : "↓",
+      subLabel: "current month plan",
+    },
+    {
+      icon: "▰",
+      title: "NET WORTH",
+      value: money(totalNetWorth),
+      ...buildTrackedMetricMeta(metricSnapshots, "totalNetWorth", totalNetWorth, true),
     },
   ];
 

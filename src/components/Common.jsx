@@ -50,6 +50,10 @@ export function SideItem({ item, activeTab, setActiveTab }) {
 }
 
 export function MetricCard({ metric }) {
+  const changeColor = metric.changeColor || (metric.red ? "#ff355d" : "#00f59b");
+  const changeIcon = metric.changeIcon || (metric.red ? "↓" : "↑");
+  const subLabel = metric.subLabel || "vs last 30 days";
+
   return (
     <div style={{ ...styles.panel, padding: 20 }}>
       <div style={{ display: "flex", gap: 16, alignItems: "flex-start" }}>
@@ -90,14 +94,14 @@ export function MetricCard({ metric }) {
           <div
             style={{
               marginTop: 12,
-              color: metric.red ? "#ff355d" : "#00f59b",
+              color: changeColor,
               fontSize: 14,
               fontWeight: 700,
             }}
           >
-            {metric.red ? "↓" : "↑"} {metric.change}
+            {changeIcon} {metric.change}
           </div>
-          <div style={{ marginTop: 4, color: "#9fb0c9", fontSize: 14 }}>vs last 30 days</div>
+          <div style={{ marginTop: 4, color: "#9fb0c9", fontSize: 14 }}>{subLabel}</div>
         </div>
       </div>
     </div>

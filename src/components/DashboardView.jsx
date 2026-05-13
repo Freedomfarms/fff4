@@ -130,18 +130,12 @@ function buildMonthlyBudgetReview(transactions, budgetRows) {
 
   const monthlyBudget = rows.reduce((sum, row) => sum + row.budget, 0);
   const monthlySpent = rows.reduce((sum, row) => sum + row.spent, 0);
-  const topRows = [...rows]
-    .filter((row) => row.budget > 0 || row.spent > 0)
-    .sort((a, b) => Math.max(b.budget, b.spent) - Math.max(a.budget, a.spent))
-    .slice(0, 5);
-
   return {
     month: activeMonth,
     year: activeYear,
     monthlyBudget,
     monthlySpent,
     remaining: monthlyBudget - monthlySpent,
-    rows: topRows,
   };
 }
 
@@ -834,9 +828,6 @@ export function DashboardView({
           <div
             style={{
               display: "flex",
-              justifyContent: "space-between",
-              alignItems: "center",
-              gap: 18,
               marginBottom: 16,
             }}
           >
@@ -847,17 +838,6 @@ export function DashboardView({
               <div style={{ color: "#8ea8ca", fontSize: 13, marginTop: 6 }}>
                 Budgeted plan vs actual spending across your highest-impact categories.
               </div>
-            </div>
-            <div
-              style={{
-                color: monthlyBudgetReview.remaining >= 0 ? "#00f59b" : "#ff5d7a",
-                fontSize: 15,
-                fontWeight: 900,
-                whiteSpace: "nowrap",
-              }}
-            >
-              {monthlyBudgetReview.remaining >= 0 ? "+" : ""}
-              {wholeDollars(monthlyBudgetReview.remaining)} remaining
             </div>
           </div>
 
@@ -905,116 +885,6 @@ export function DashboardView({
                 </div>
               </div>
             ))}
-          </div>
-
-          <div style={{ marginTop: 22 }}>
-            {monthlyBudgetReview.rows.map((item) => {
-              const scaleMax = Math.max(item.budget, item.spent, 1);
-              const budgetWidth = `${(item.budget / scaleMax) * 100}%`;
-              const spentWidth = `${(item.spent / scaleMax) * 100}%`;
-
-              return (
-              <div
-                key={item.id}
-                style={{
-                  padding: "14px 0",
-                  borderTop: "1px solid rgba(0,136,255,.10)",
-                }}
-              >
-                <div
-                  style={{
-                    display: "grid",
-                    gridTemplateColumns: "minmax(0, 1fr) auto auto",
-                    gap: 18,
-                    alignItems: "center",
-                    marginBottom: 10,
-                    fontVariantNumeric: "tabular-nums",
-                  }}
-                >
-                  <div style={{ display: "flex", alignItems: "center", gap: 12, minWidth: 0 }}>
-                    <span
-                      style={{
-                        width: 10,
-                        height: 10,
-                        borderRadius: 999,
-                        background: item.color,
-                        flexShrink: 0,
-                      }}
-                    />
-                    <span style={{ color: "white", fontWeight: 700 }}>{item.name}</span>
-                  </div>
-                  <div style={{ color: "#8feaff", whiteSpace: "nowrap" }}>
-                    Bgt {money(item.budget)}
-                  </div>
-                  <div
-                    style={{
-                      color: item.remaining >= 0 ? "#00f59b" : "#ff5d7a",
-                      whiteSpace: "nowrap",
-                      fontWeight: 800,
-                    }}
-                  >
-                    Spent {money(item.spent)}
-                  </div>
-                </div>
-
-                <div style={{ display: "grid", gap: 8 }}>
-                  <div style={{ display: "grid", gap: 5 }}>
-                    <div style={{ color: "#8fb1d9", fontSize: 11, textTransform: "uppercase" }}>
-                      Budget
-                    </div>
-                    <div style={{ height: 8, borderRadius: 999, background: "rgba(13,54,99,.55)" }}>
-                      <div
-                        style={{
-                          width: budgetWidth,
-                          height: "100%",
-                          borderRadius: 999,
-                          background: "#138bff",
-                          boxShadow: "0 0 12px rgba(19,139,255,.3)",
-                        }}
-                      />
-                    </div>
-                  </div>
-                  <div style={{ display: "grid", gap: 5 }}>
-                    <div style={{ color: "#8fb1d9", fontSize: 11, textTransform: "uppercase" }}>
-                      Spend
-                    </div>
-                    <div style={{ height: 8, borderRadius: 999, background: "rgba(13,54,99,.55)" }}>
-                      <div
-                        style={{
-                          width: spentWidth,
-                          height: "100%",
-                          borderRadius: 999,
-                          background: item.spent > item.budget ? "#ff5d7a" : "#ffb65d",
-                          boxShadow:
-                            item.spent > item.budget
-                              ? "0 0 12px rgba(255,93,122,.28)"
-                              : "0 0 12px rgba(255,182,93,.28)",
-                        }}
-                      />
-                    </div>
-                  </div>
-                </div>
-
-                <div
-                  style={{
-                    marginTop: 10,
-                    color: item.remaining >= 0 ? "#00f59b" : "#ff5d7a",
-                    fontSize: 12,
-                    fontWeight: 800,
-                    textAlign: "right",
-                  }}
-                >
-                  {item.remaining >= 0 ? "+" : "-"}
-                  {wholeDollars(Math.abs(item.remaining))} {item.remaining >= 0 ? "remaining" : "over budget"}
-                </div>
-              </div>
-              );
-            })}
-            {monthlyBudgetReview.rows.length === 0 ? (
-              <div style={{ color: "#8ea8ca", fontSize: 14, paddingTop: 8 }}>
-                No budget review data is available for the active month yet.
-              </div>
-            ) : null}
           </div>
         </div>
       </section>
