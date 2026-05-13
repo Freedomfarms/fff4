@@ -229,7 +229,7 @@ export function TransactionsView({
         <div
           style={{
             display: "grid",
-            gridTemplateColumns: "150px 1.08fr .9fr .4fr 130px",
+            gridTemplateColumns: "150px .76fr .81fr .4fr 130px",
             gap: 12,
             alignItems: "center",
           }}
