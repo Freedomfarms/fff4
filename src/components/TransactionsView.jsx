@@ -229,8 +229,8 @@ export function TransactionsView({
         <div
           style={{
             display: "grid",
-            gridTemplateColumns: "150px .76fr .81fr .4fr 130px",
-            gap: 12,
+            gridTemplateColumns: "140px minmax(105px,.62fr) minmax(100px,.62fr) 88px 118px",
+            gap: 10,
             alignItems: "center",
           }}
         >
@@ -240,7 +240,7 @@ export function TransactionsView({
             ["account", "Account", "text"],
             ["amount", "Amount", "text"],
           ].map(([field, label, type]) => (
-            <label key={field} style={{ display: "grid", gap: 7 }}>
+            <label key={field} style={{ display: "grid", gap: 7, minWidth: 0 }}>
               <span
                 style={{
                   color: "#8fb1d9",
@@ -274,12 +274,13 @@ export function TransactionsView({
                   outline: "none",
                   fontWeight: 800,
                   colorScheme: "dark",
+                  minWidth: 0,
                 }}
               />
             </label>
           ))}
 
-          <label style={{ display: "grid", gap: 7 }}>
+          <label style={{ display: "grid", gap: 7, minWidth: 0 }}>
             <span
               style={{
                 color: "#8fb1d9",
@@ -302,6 +303,7 @@ export function TransactionsView({
                 padding: "10px 11px",
                 outline: "none",
                 fontWeight: 800,
+                minWidth: 0,
               }}
             >
               {categoryOptions.map((category) => (
