@@ -965,7 +965,7 @@ export function TransactionsView({
 
         <div style={{ maxHeight: "62vh", overflowY: "auto", paddingRight: 4 }}>
           {visibleTransactions.length > 0 ? (
-            filteredTransactions.map((tx) => (
+            filteredTransactions.map((tx, index) => (
               <div
                 key={`${tx.id || tx.date}-${tx.merchant}-${tx.account}-${tx.amount}`}
                 style={{
