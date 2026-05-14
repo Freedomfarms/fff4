@@ -2,6 +2,8 @@ import { useState } from "react";
 import { styles } from "../styles.js";
 import { money, parseMoney, wholeDollars } from "../utils/format.js";
 import { budgetMonths, chartSets, yearlyOpsData } from "../data/constants.jsx";
+import { buildSubscriptionMonthlySeries, buildSubscriptionOverview } from "../utils/subscriptions.js";
+import { MonthCoverageEditor } from "./Common.jsx";
 import {
   buildSyncedTrueCashChart,
   buildTrueCashProjectionSchedule,
@@ -24,6 +26,7 @@ function normalizeAdjustmentInput(value) {
 
 export function OperationsBoard({
   budgetRows,
+  subscriptions,
   incomeStreams,
   setIncomeStreams,
   trueCash,
@@ -31,8 +34,6 @@ export function OperationsBoard({
   setProjectionAdjustments,
 }) {
   const [incomeDeleteTarget, setIncomeDeleteTarget] = useState(null);
-  const [otherValue, setOtherValue] = useState(0);
-  const [startingSpotDate, setStartingSpotDate] = useState("2026-01-01");
   const [hoveredCommandMonth, setHoveredCommandMonth] = useState(null);
 
   const addIncomeStream = () => {
@@ -71,6 +72,17 @@ export function OperationsBoard({
       })
     );
   };
+
+  const setIncomeMonths = (index, nextMonths) => {
+    const normalizedMonths = budgetMonths.filter((month) => nextMonths.includes(month));
+    const safeMonths = normalizedMonths.length ? normalizedMonths : [budgetMonths[4]];
+
+    setIncomeStreams((streams) =>
+      streams.map((stream, streamIndex) =>
+        streamIndex === index ? { ...stream, months: safeMonths } : stream
+      )
+    );
+  };
   const dynamicYearlyOpsData = yearlyOpsData.map((month) => {
     const activeStreams = incomeStreams.filter((stream) =>
       (stream.months || budgetMonths).includes(month.month)
@@ -103,6 +115,8 @@ export function OperationsBoard({
   const yearlyIncome = dynamicYearlyOpsData.reduce((sum, month) => sum + month.income, 0);
   const yearlyBudget = dynamicYearlyOpsData.reduce((sum, month) => sum + month.budget, 0);
   const yearlySurplus = yearlyIncome - yearlyBudget;
+  const subscriptionSeries = buildSubscriptionMonthlySeries(subscriptions);
+  const subscriptionOverview = buildSubscriptionOverview(subscriptions);
   const maxValue = Math.max(
     ...dynamicYearlyOpsData.flatMap((month) => [month.income, month.budget]),
     1
@@ -118,8 +132,9 @@ export function OperationsBoard({
       total: monthlyValues.reduce((sum, value) => sum + value, 0),
     };
   });
+  const syncedProjectionChart = buildSyncedTrueCashChart(chartSets.ALL, trueCash);
   const trueCashProjectionSchedule = buildTrueCashProjectionSchedule({
-    chart: buildSyncedTrueCashChart(chartSets.ALL, trueCash),
+    chart: syncedProjectionChart,
     incomeStreams,
     budgetRows,
     projectionAdjustments,
@@ -130,6 +145,8 @@ export function OperationsBoard({
   );
   const projectedYearEndTrueCash =
     projectedTrueCashValues[projectedTrueCashValues.length - 1] || trueCash;
+  const projectionBaseDate = syncedProjectionChart.dates?.[0] || syncedProjectionChart.date;
+  const projectionBaseValue = parseMoney(syncedProjectionChart.values?.[0] || syncedProjectionChart.value);
 
   return (
     <div>
@@ -165,7 +182,7 @@ export function OperationsBoard({
       <section
         style={{
           display: "grid",
-          gridTemplateColumns: "repeat(4, 1fr)",
+          gridTemplateColumns: "repeat(5, 1fr)",
           gap: 16,
           marginBottom: 18,
         }}
@@ -174,6 +191,12 @@ export function OperationsBoard({
           ["Total Income", money(yearlyIncome), "#00f59b"],
           ["Total Budget", money(yearlyBudget), "#00d8ff"],
           ["Yearly Profit", money(yearlySurplus), yearlySurplus >= 0 ? "#00f59b" : "#ff5d7a"],
+          [
+            "Recurring Commitments",
+            money(subscriptionOverview.activeMonthly),
+            "#ffb65d",
+            `${money(subscriptionOverview.yearlyCommitment)} annualized`,
+          ],
         ].map((item) => (
           <div key={item[0]} style={{ ...styles.panel, padding: 20 }}>
             <div
@@ -197,6 +220,9 @@ export function OperationsBoard({
             >
               {item[1]}
             </div>
+            {item[3] ? (
+              <div style={{ color: "#8ea8ca", fontSize: 12, marginTop: 10 }}>{item[3]}</div>
+            ) : null}
           </div>
         ))}
 
@@ -204,65 +230,43 @@ export function OperationsBoard({
           <div
             style={{ color: "#8fb1d9", fontSize: 12, textTransform: "uppercase", letterSpacing: 1 }}
           >
-            Starting Spot
+            Projection Base
           </div>
 
           <div
             style={{
+              marginTop: 12,
               display: "grid",
-              gridTemplateColumns: "1fr 1fr",
-              gap: 18,
-              alignItems: "center",
-              marginTop: 8,
+              gap: 12,
             }}
           >
-            <input
-              value={money(otherValue)}
-              onChange={(event) => {
-                const cleaned = String(event.target.value).replace(/[^0-9.-]/g, "");
-                setOtherValue(cleaned === "" ? 0 : Number(cleaned));
-              }}
+            <div
               style={{
                 color: "#eaf3ff",
                 fontSize: 30,
                 fontWeight: 900,
-                width: "100%",
-                background: "transparent",
-                border: "1px solid transparent",
-                borderRadius: 8,
-                padding: "4px 0",
-                outline: "none",
               }}
-              onFocus={(event) => {
-                event.currentTarget.style.border = "1px solid rgba(0,216,255,.35)";
-                event.currentTarget.style.background = "rgba(0,136,255,.08)";
-              }}
-              onBlur={(event) => {
-                event.currentTarget.style.border = "1px solid transparent";
-                event.currentTarget.style.background = "transparent";
-              }}
-            />
-
-            <input
-              type="date"
-              value={startingSpotDate}
-              onChange={(event) => setStartingSpotDate(event.target.value)}
+            >
+              {wholeDollars(projectionBaseValue)}
+            </div>
+            <div
               style={{
-                color: "#cfe7ff",
-                fontSize: 13,
-                fontWeight: 800,
                 background: "rgba(0,136,255,.08)",
                 border: "1px solid rgba(0,216,255,.22)",
                 borderRadius: 10,
                 padding: "10px 14px",
-                outline: "none",
-                width: 180,
-                justifySelf: "center",
-                textAlign: "center",
-                colorScheme: "dark",
+                color: "#cfe7ff",
+                fontSize: 13,
+                fontWeight: 800,
                 boxShadow: "0 0 18px rgba(0,216,255,.12)",
               }}
-            />
+            >
+              Anchored to {projectionBaseDate}
+            </div>
+            <div style={{ color: "#8ea8ca", fontSize: 12, lineHeight: 1.5 }}>
+              Uses the same shared true-cash baseline that powers the dashboard and forecast
+              projection schedule.
+            </div>
           </div>
         </div>
       </section>
@@ -434,65 +438,23 @@ export function OperationsBoard({
                     </div>
                     <div
                       style={{
-                        display: "flex",
-                        alignItems: "center",
-                        gap: 10,
+                        display: "grid",
                         marginTop: 6,
-                        flexWrap: "wrap",
+                        minWidth: 0,
                       }}
                     >
                       <div style={{ color: "#00f59b", fontSize: 13, fontWeight: 800 }}>
                         {income.type}
                       </div>
-
-                      <select
-                        defaultValue=""
-                        onChange={(event) => {
-                          if (event.target.value) {
-                            if (event.target.value === "ALL") {
-                              setIncomeStreams((streams) =>
-                                streams.map((stream, streamIndex) =>
-                                  streamIndex === index
-                                    ? { ...stream, months: budgetMonths }
-                                    : stream
-                                )
-                              );
-                            } else {
-                              toggleIncomeMonth(index, event.target.value);
-                            }
-                            event.target.value = "";
-                          }
-                        }}
-                        style={{
-                          background: "rgba(0,136,255,.08)",
-                          border: "1px solid rgba(0,216,255,.18)",
-                          color: "#9fd8ff",
-                          borderRadius: 6,
-                          padding: "4px 7px",
-                          fontSize: 10,
-                          width: 94,
-                          outline: "none",
-                          fontWeight: 700,
-                        }}
-                      >
-                        <option value="ALL">All Months</option>
-                        <option value="">Months</option>
-                        {budgetMonths.map((month) => (
-                          <option
-                            key={month}
-                            value={month}
-                            style={{ background: "#061224", color: "#eaf3ff" }}
-                          >
-                            {month}
-                          </option>
-                        ))}
-                      </select>
-
-                      <div style={{ color: "#7ea6d8", fontSize: 11, fontWeight: 700 }}>
-                        {(income.months || budgetMonths).length === 12
-                          ? "All months"
-                          : (income.months || budgetMonths).join(", ")}
-                      </div>
+                      <MonthCoverageEditor
+                        allMonths={budgetMonths}
+                        selectedMonths={income.months || budgetMonths}
+                        onToggleMonth={(month) => toggleIncomeMonth(index, month)}
+                        quickActions={[
+                          { label: "All", onClick: () => setIncomeMonths(index, budgetMonths) },
+                          { label: "Only May", onClick: () => setIncomeMonths(index, ["May"]) },
+                        ]}
+                      />
                     </div>
                   </div>
 
@@ -826,6 +788,12 @@ export function OperationsBoard({
                 color: "#00d8ff",
                 values: dynamicYearlyOpsData.map((month) => month.baseBudget),
                 total: dynamicYearlyOpsData.reduce((sum, month) => sum + month.baseBudget, 0),
+              },
+              {
+                label: "Subscriptions",
+                color: "#ffb65d",
+                values: subscriptionSeries.map((row) => row.total),
+                total: subscriptionSeries.reduce((sum, row) => sum + row.total, 0),
               },
             ].map((row) => (
               <div

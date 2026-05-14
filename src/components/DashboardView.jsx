@@ -1,7 +1,8 @@
 import { useState } from "react";
-import { chartSets } from "../data/constants.jsx";
+import { budgetMonthNames, budgetMonths, chartSets } from "../data/constants.jsx";
 import { styles } from "../styles.js";
 import { buildAreaPath, buildLinePath, money, parseMoney, wholeDollars } from "../utils/format.js";
+import { buildSubscriptionOverview } from "../utils/subscriptions.js";
 import {
   buildSyncedTrueCashChart,
   buildTrueCashProjectionSchedule,
@@ -9,6 +10,8 @@ import {
 import { InfoDot, MetricCard } from "./Common.jsx";
 
 const CHART_HEIGHT = 300;
+const NET_WORTH_HISTORY_W = 620;
+const NET_WORTH_HISTORY_H = 180;
 const MONTH_END_X = {
   Jan: 80,
   Feb: 147,
@@ -53,18 +56,209 @@ function buildProjectionAreaPath(points) {
   );
 }
 
+function buildAllocationGradient(dynamicAllocations) {
+  const positiveAllocations = dynamicAllocations.filter((item) => Number(item.valueNumber) > 0);
+  if (positiveAllocations.length === 0) {
+    return "conic-gradient(#12355f 0 100%)";
+  }
+
+  const total = positiveAllocations.reduce((sum, item) => sum + Number(item.valueNumber || 0), 0);
+  let currentPercent = 0;
+
+  return `conic-gradient(${positiveAllocations
+    .map((item) => {
+      const start = currentPercent;
+      currentPercent += (Number(item.valueNumber || 0) / total) * 100;
+      return `${item.color} ${start.toFixed(2)}% ${currentPercent.toFixed(2)}%`;
+    })
+    .join(", ")})`;
+}
+
+function buildFilledAreaPath(points, chartHeight) {
+  if (points.length === 0) return "";
+
+  const firstPoint = points[0];
+  const lastPoint = points[points.length - 1];
+  return (
+    buildLinePath(points) +
+    ` L ${lastPoint[0]} ${chartHeight} L ${firstPoint[0]} ${chartHeight} Z`
+  );
+}
+
+function formatSnapshotLabel(dateKey) {
+  const [year, month, day] = String(dateKey || "").split("-").map(Number);
+  if (!year || !month || !day) return dateKey;
+
+  return new Date(year, month - 1, day).toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+  });
+}
+
+function parseSnapshotDate(dateKey) {
+  const [year, month, day] = String(dateKey || "").split("-").map(Number);
+  if (!year || !month || !day) return null;
+  return new Date(year, month - 1, day);
+}
+
+const monthNameToBudgetMonth = Object.fromEntries(
+  budgetMonths.map((month) => [budgetMonthNames[month], month])
+);
+
+function parseBudgetReviewDate(value) {
+  const match = /^([A-Za-z]+)\s+\d{1,2},\s+(\d{4})$/.exec(value || "");
+  if (!match) return null;
+
+  const [, monthName, year] = match;
+  const month = monthNameToBudgetMonth[monthName];
+  if (!month) return null;
+
+  return { month, year: Number(year) || 2026 };
+}
+
+function buildMonthlyBudgetReview(transactions, budgetRows) {
+  const latestTransaction = transactions
+    .map((tx) => ({ tx, parsed: parseBudgetReviewDate(tx.date) }))
+    .filter((item) => item.parsed)
+    .sort((a, b) => {
+      const aIndex = budgetMonths.indexOf(a.parsed.month);
+      const bIndex = budgetMonths.indexOf(b.parsed.month);
+      return a.parsed.year === b.parsed.year ? bIndex - aIndex : b.parsed.year - a.parsed.year;
+    })[0];
+
+  const activeMonth = latestTransaction?.parsed?.month || "May";
+  const activeYear = latestTransaction?.parsed?.year || 2026;
+  const matchedBudgetCategories = budgetRows
+    .filter((row) => row.name !== "Other")
+    .flatMap((row) => row.transactionCategories);
+
+  const activeTransactions = transactions.filter((tx) => {
+    const parsed = parseBudgetReviewDate(tx.date);
+    return parsed?.month === activeMonth && parsed?.year === activeYear;
+  });
+
+  const rows = budgetRows
+    .filter((row) => (row.months || budgetMonths).includes(activeMonth))
+    .map((row) => {
+      const spent = activeTransactions
+        .filter((tx) => {
+          if (tx.amount >= 0) return false;
+          if (row.name === "Other") return !matchedBudgetCategories.includes(tx.category);
+          return row.transactionCategories.includes(tx.category);
+        })
+        .reduce((sum, tx) => sum + Math.abs(tx.amount), 0);
+
+      return {
+        id: row.id,
+        name: row.name,
+        budget: Number(row.budget || 0),
+        spent,
+        remaining: Number(row.budget || 0) - spent,
+        color: row.color || "#00d8ff",
+      };
+    });
+
+  const monthlyBudget = rows.reduce((sum, row) => sum + row.budget, 0);
+  const monthlySpent = rows.reduce((sum, row) => sum + row.spent, 0);
+  return {
+    month: activeMonth,
+    year: activeYear,
+    monthlyBudget,
+    monthlySpent,
+    remaining: monthlyBudget - monthlySpent,
+  };
+}
+
+function buildNetWorthHistory(metricSnapshots, range) {
+  const now = new Date();
+  const rangeStart = new Date(now);
+  if (range === "90D") rangeStart.setDate(now.getDate() - 89);
+  if (range === "1Y") rangeStart.setFullYear(now.getFullYear() - 1);
+  const rangeEntries = Object.entries(metricSnapshots || {})
+    .sort(([a], [b]) => a.localeCompare(b))
+    .filter(([, snapshot]) => typeof snapshot?.totalNetWorth === "number")
+    .filter(([dateKey]) => {
+      const date = parseSnapshotDate(dateKey);
+      if (!date) return false;
+      if (range === "30D") return date >= new Date(now.getFullYear(), now.getMonth(), now.getDate() - 29);
+      if (range === "90D") return date >= rangeStart;
+      if (range === "YTD") return date >= new Date(now.getFullYear(), 0, 1);
+      if (range === "1Y") return date >= rangeStart;
+      return true;
+    });
+  const entries = rangeEntries;
+
+  if (entries.length === 0) {
+    return {
+      entries: [],
+      points: [],
+      linePath: "",
+      areaPath: "",
+      change: 0,
+      latestValue: 0,
+      labels: [],
+    };
+  }
+
+  const values = entries.map(([, snapshot]) => Number(snapshot.totalNetWorth) || 0);
+  const maxValue = Math.max(...values, 1);
+  const minValue = Math.min(...values, 0);
+  const paddedRange = Math.max((maxValue - minValue) * 0.18, 1);
+  const upper = maxValue + paddedRange;
+  const lower = minValue - paddedRange;
+  const chartRange = Math.max(upper - lower, 1);
+
+  const points = entries.map(([, snapshot], index) => {
+    const x =
+      entries.length === 1 ? NET_WORTH_HISTORY_W / 2 : (index / (entries.length - 1)) * NET_WORTH_HISTORY_W;
+    const value = Number(snapshot.totalNetWorth) || 0;
+    const y = NET_WORTH_HISTORY_H - ((value - lower) / chartRange) * NET_WORTH_HISTORY_H;
+    return [x, y];
+  });
+
+  const latestValue = values[values.length - 1] || 0;
+  const startValue = values[0] || 0;
+  const change = latestValue - startValue;
+  const labels =
+    entries.length >= 3
+      ? [entries[0][0], entries[Math.floor(entries.length / 2)][0], entries[entries.length - 1][0]]
+      : entries.map(([dateKey]) => dateKey);
+
+  return {
+    entries,
+    points,
+    linePath: buildLinePath(points),
+    areaPath: buildFilledAreaPath(points, NET_WORTH_HISTORY_H),
+    change,
+    latestValue,
+    labels,
+  };
+}
+
 export function DashboardView({
   activeRange,
   setActiveRange,
+  setActiveTab,
   trueCash,
+  transactions,
+  subscriptions,
   incomeStreams,
   budgetRows,
   projectionAdjustments,
   dynamicMetrics,
   dynamicAllocations,
-  dynamicBreakdown,
+  metricSnapshots,
 }) {
   const [hoverState, setHoverState] = useState(null);
+  const [netWorthHistoryRange, setNetWorthHistoryRange] = useState("30D");
+  const allocationGradient = buildAllocationGradient(dynamicAllocations);
+  const allocationTotal = dynamicAllocations.reduce(
+    (sum, item) => sum + Number(item.valueNumber || 0),
+    0
+  );
+  const monthlyBudgetReview = buildMonthlyBudgetReview(transactions, budgetRows);
+  const subscriptionOverview = buildSubscriptionOverview(subscriptions);
+  const netWorthHistory = buildNetWorthHistory(metricSnapshots, netWorthHistoryRange);
   const chartValues = buildSyncedTrueCashChart(chartSets[activeRange], trueCash);
   const projectionSchedule = buildTrueCashProjectionSchedule({
     chart: chartValues,
@@ -641,26 +835,189 @@ export function DashboardView({
               alignItems: "center",
               gap: 8,
               textTransform: "uppercase",
+              marginBottom: 18,
+            }}
+          >
+            Monthly Budget Review <InfoDot />
+          </div>
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+              gap: 18,
+              marginBottom: 16,
+            }}
+          >
+            <div>
+              <div style={{ color: "white", fontSize: 22, fontWeight: 900 }}>
+                {budgetMonthNames[monthlyBudgetReview.month]} {monthlyBudgetReview.year}
+              </div>
+              <div style={{ color: "#8ea8ca", fontSize: 13, marginTop: 6 }}>
+                Budgeted plan vs actual spending across your highest-impact categories.
+              </div>
+              {subscriptionOverview.activeCount > 0 ? (
+                <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginTop: 10 }}>
+                  <span
+                    style={{
+                      border: "1px solid rgba(0,216,255,.18)",
+                      borderRadius: 999,
+                      padding: "6px 10px",
+                      color: "#8feaff",
+                      fontSize: 12,
+                    }}
+                  >
+                    Auto-pay commitments {money(subscriptionOverview.activeMonthly)}/mo
+                  </span>
+                  {subscriptionOverview.topAccounts[0] ? (
+                    <span
+                      style={{
+                        border: "1px solid rgba(0,216,255,.18)",
+                        borderRadius: 999,
+                        padding: "6px 10px",
+                        color: "#b8d3f3",
+                        fontSize: 12,
+                      }}
+                    >
+                      Highest billed account: {subscriptionOverview.topAccounts[0].account}
+                    </span>
+                  ) : null}
+                </div>
+              ) : null}
+            </div>
+            <div style={{ display: "flex", gap: 10 }}>
+              <button
+                onClick={() => setActiveTab("Recurring Subscriptions")}
+                style={{
+                  background: "rgba(0,136,255,.08)",
+                  border: "1px solid rgba(0,216,255,.18)",
+                  color: "#d7ebff",
+                  borderRadius: 8,
+                  padding: "10px 14px",
+                  cursor: "pointer",
+                  fontWeight: 700,
+                  whiteSpace: "nowrap",
+                }}
+              >
+                Open Subscriptions
+              </button>
+              <button
+                onClick={() => setActiveTab("Budget Command Center")}
+                style={{
+                  background: "rgba(0,136,255,.12)",
+                  border: "1px solid rgba(0,216,255,.28)",
+                  color: "#d7ebff",
+                  borderRadius: 8,
+                  padding: "10px 14px",
+                  cursor: "pointer",
+                  fontWeight: 700,
+                  whiteSpace: "nowrap",
+                }}
+              >
+                Open Budget Center
+              </button>
+            </div>
+          </div>
+
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 14 }}>
+            {[
+              ["Budget", money(monthlyBudgetReview.monthlyBudget), "#8feaff"],
+              ["Spent", money(monthlyBudgetReview.monthlySpent), "#ffb65d"],
+              [
+                monthlyBudgetReview.remaining >= 0 ? "Remaining" : "Over Budget",
+                `${monthlyBudgetReview.remaining >= 0 ? "" : "-"}${money(
+                  Math.abs(monthlyBudgetReview.remaining)
+                )}`,
+                monthlyBudgetReview.remaining >= 0 ? "#00f59b" : "#ff5d7a",
+              ],
+            ].map(([label, value, color]) => (
+              <div
+                key={label}
+                style={{
+                  border: "1px solid rgba(0,136,255,.18)",
+                  borderRadius: 14,
+                  background: "rgba(3,17,32,.58)",
+                  padding: "16px 18px 18px",
+                }}
+              >
+                <div
+                  style={{
+                    color: "#8fb1d9",
+                    fontSize: 12,
+                    textTransform: "uppercase",
+                    letterSpacing: 0.9,
+                    marginBottom: 10,
+                  }}
+                >
+                  {label}
+                </div>
+                <div
+                  style={{
+                    color,
+                    fontSize: 22,
+                    fontWeight: 900,
+                    lineHeight: 1.2,
+                  }}
+                >
+                  {value}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div style={{ ...styles.panel, padding: 20 }}>
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 8,
+              textTransform: "uppercase",
               marginBottom: 20,
             }}
           >
-            Asset Allocation <InfoDot />
+            Net Worth Breakdown <InfoDot />
           </div>
-          <div style={{ display: "flex", alignItems: "center", gap: 38 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 30 }}>
             <div
               style={{
-                width: 144,
-                height: 144,
+                position: "relative",
+                width: 182,
+                height: 182,
                 borderRadius: 999,
-                background:
-                  "conic-gradient(#168bff 0 53%, #8b34ff 53% 73%, #18d3ff 73% 90%, #ffb65d 90% 99%, #80ffd9 99% 100%)",
-                padding: 26,
+                background: allocationGradient,
+                padding: 30,
                 boxShadow: "0 0 35px rgba(0,174,255,.45)",
+                flexShrink: 0,
               }}
             >
               <div
                 style={{ width: "100%", height: "100%", borderRadius: 999, background: "#031120" }}
               />
+              <div
+                style={{
+                  position: "absolute",
+                  inset: 0,
+                  display: "flex",
+                  flexDirection: "column",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  textAlign: "center",
+                  pointerEvents: "none",
+                }}
+              >
+                <div
+                  style={{
+                    color: "white",
+                    fontSize: 24,
+                    fontWeight: 900,
+                    lineHeight: 1.15,
+                    maxWidth: 112,
+                  }}
+                >
+                  {wholeDollars(allocationTotal)}
+                </div>
+              </div>
             </div>
             <div style={{ flex: 1, fontSize: 14 }}>
               {dynamicAllocations.map((item) => (
@@ -668,12 +1025,14 @@ export function DashboardView({
                   key={item.name}
                   style={{
                     display: "grid",
-                    gridTemplateColumns: "1fr auto auto",
-                    gap: 28,
-                    marginBottom: 19,
+                    gridTemplateColumns: "minmax(0, 1fr) 126px 64px",
+                    gap: 16,
+                    marginBottom: 16,
+                    alignItems: "center",
+                    fontVariantNumeric: "tabular-nums",
                   }}
                 >
-                  <span>
+                  <span style={{ minWidth: 0 }}>
                     <b
                       style={{
                         display: "inline-block",
@@ -686,52 +1045,161 @@ export function DashboardView({
                     />
                     {item.name}
                   </span>
-                  <span>{item.amount}</span>
-                  <span>{item.percent}</span>
+                  <span style={{ textAlign: "right", whiteSpace: "nowrap" }}>{item.amount}</span>
+                  <span style={{ textAlign: "right", whiteSpace: "nowrap" }}>{item.percent}</span>
                 </div>
               ))}
             </div>
           </div>
         </div>
+      </section>
 
-        <div style={{ ...styles.panel, padding: 20 }}>
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 8,
-              textTransform: "uppercase",
-              marginBottom: 34,
-            }}
-          >
-            Net Worth Breakdown <InfoDot />
-          </div>
-          {dynamicBreakdown.map((item) => (
-            <div key={item.label} style={{ marginBottom: 26 }}>
-              <div
-                style={{
-                  display: "flex",
-                  justifyContent: "space-between",
-                  marginBottom: 12,
-                  fontSize: 14,
-                }}
-              >
-                <span>{item.label}</span>
-                <b>{item.value}</b>
-              </div>
-              <div style={{ height: 4, borderRadius: 999, background: "rgba(23,76,136,.38)" }}>
-                <div
-                  style={{
-                    height: 4,
-                    borderRadius: 999,
-                    width: item.width,
-                    background: item.color,
-                  }}
-                />
-              </div>
+      <section style={{ ...styles.panel, padding: 20, marginTop: 16 }}>
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+            gap: 18,
+            marginBottom: 18,
+          }}
+        >
+          <div>
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 8,
+                textTransform: "uppercase",
+                marginBottom: 10,
+              }}
+            >
+              Net Worth History <InfoDot />
             </div>
-          ))}
+            <div style={{ color: "white", fontSize: 26, fontWeight: 900 }}>
+              {wholeDollars(netWorthHistory.latestValue)}
+            </div>
+            <div
+              style={{
+                color: netWorthHistory.change >= 0 ? "#00f59b" : "#ff5d7a",
+                fontSize: 13,
+                fontWeight: 800,
+                marginTop: 6,
+              }}
+            >
+              {netWorthHistory.entries.length > 1
+                ? `${netWorthHistory.change >= 0 ? "+" : "-"}${wholeDollars(
+                    Math.abs(netWorthHistory.change)
+                  )} over tracked period`
+                : "Daily history is building"}
+            </div>
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+            <div style={{ display: "flex", gap: 8 }}>
+              {["30D", "90D", "YTD", "1Y"].map((range) => (
+                <button
+                  key={range}
+                  onClick={() => setNetWorthHistoryRange(range)}
+                  style={{
+                    background:
+                      netWorthHistoryRange === range ? "rgba(0,136,255,.18)" : "rgba(0,136,255,.08)",
+                    border:
+                      netWorthHistoryRange === range
+                        ? "1px solid rgba(0,216,255,.42)"
+                        : "1px solid rgba(0,216,255,.18)",
+                    color: netWorthHistoryRange === range ? "#eaf7ff" : "#9fbddb",
+                    borderRadius: 8,
+                    padding: "8px 10px",
+                    cursor: "pointer",
+                    fontWeight: 800,
+                    fontSize: 12,
+                  }}
+                >
+                  {range}
+                </button>
+              ))}
+            </div>
+            <button
+              onClick={() => setActiveTab("Add Accounts")}
+              style={{
+                background: "rgba(0,136,255,.12)",
+                border: "1px solid rgba(0,216,255,.28)",
+                color: "#d7ebff",
+                borderRadius: 8,
+                padding: "10px 14px",
+                cursor: "pointer",
+                fontWeight: 700,
+                whiteSpace: "nowrap",
+              }}
+            >
+              View Accounts
+            </button>
+          </div>
         </div>
+
+        {netWorthHistory.points.length > 1 ? (
+          <div style={{ position: "relative", padding: "8px 0 24px" }}>
+            <svg
+              viewBox={`0 0 ${NET_WORTH_HISTORY_W} ${NET_WORTH_HISTORY_H}`}
+              style={{ width: "100%", overflow: "visible" }}
+              preserveAspectRatio="none"
+            >
+              <defs>
+                <linearGradient id="net-worth-history-fill" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor="#00d8ff" stopOpacity="0.22" />
+                  <stop offset="100%" stopColor="#00d8ff" stopOpacity="0.02" />
+                </linearGradient>
+              </defs>
+              {[0, 0.25, 0.5, 0.75, 1].map((ratio) => (
+                <line
+                  key={ratio}
+                  x1={0}
+                  y1={ratio * NET_WORTH_HISTORY_H}
+                  x2={NET_WORTH_HISTORY_W}
+                  y2={ratio * NET_WORTH_HISTORY_H}
+                  stroke="rgba(0,136,255,.10)"
+                  strokeWidth={1}
+                />
+              ))}
+              <path d={netWorthHistory.areaPath} fill="url(#net-worth-history-fill)" />
+              <path
+                d={netWorthHistory.linePath}
+                fill="none"
+                stroke="#00d8ff"
+                strokeWidth="3"
+                strokeLinejoin="round"
+                strokeLinecap="round"
+              />
+              <circle
+                cx={netWorthHistory.points[netWorthHistory.points.length - 1][0]}
+                cy={netWorthHistory.points[netWorthHistory.points.length - 1][1]}
+                r="4"
+                fill="#8feaff"
+              />
+            </svg>
+
+            <div
+              style={{
+                position: "absolute",
+                left: 0,
+                right: 0,
+                bottom: 0,
+                display: "flex",
+                justifyContent: "space-between",
+                color: "#8fb1d9",
+                fontSize: 12,
+              }}
+            >
+              {netWorthHistory.labels.map((label) => (
+                <span key={label}>{formatSnapshotLabel(label)}</span>
+              ))}
+            </div>
+          </div>
+        ) : (
+          <div style={{ color: "#8ea8ca", fontSize: 14, paddingTop: 8 }}>
+            Keep using the app daily to build a net worth trendline from tracked snapshots.
+          </div>
+        )}
       </section>
     </>
   );

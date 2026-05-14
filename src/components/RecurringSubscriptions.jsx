@@ -1,9 +1,13 @@
 import { useState } from "react";
 import { styles } from "../styles.js";
 import { money } from "../utils/format.js";
-
-const FREQUENCIES = ["Monthly", "Annual", "Quarterly", "Weekly"];
-const STATUSES = ["Active", "Paused", "Cancelled"];
+import { accountSupportsTransactions } from "../utils/accounts.js";
+import {
+  monthlyEquivalent,
+  nextBillingDate,
+  SUBSCRIPTION_FREQUENCIES,
+  SUBSCRIPTION_STATUSES,
+} from "../utils/subscriptions.js";
 
 const STATUS_COLORS = {
   Active: "#00f59b",
@@ -16,28 +20,6 @@ const STATUS_BG = {
   Paused: "rgba(255,182,93,.12)",
   Cancelled: "rgba(255,93,122,.12)",
 };
-
-function monthlyEquivalent(amount, frequency) {
-  if (frequency === "Annual") return amount / 12;
-  if (frequency === "Quarterly") return amount / 3;
-  if (frequency === "Weekly") return amount * (52 / 12);
-  return amount;
-}
-
-function nextBillingDate(billingDay) {
-  const today = new Date(2026, 4, 13);
-  let month = today.getMonth();
-  let year = today.getFullYear();
-  if (today.getDate() > billingDay) {
-    month += 1;
-    if (month > 11) {
-      month = 0;
-      year += 1;
-    }
-  }
-  const date = new Date(year, month, billingDay);
-  return date.toLocaleDateString("en-US", { month: "short", day: "numeric" });
-}
 
 const CATEGORY_OPTIONS = [
   "Housing",
@@ -87,11 +69,12 @@ const EMPTY_FORM = {
   status: "Active",
 };
 
-export function RecurringSubscriptions({ subscriptions, setSubscriptions }) {
+export function RecurringSubscriptions({ accounts, subscriptions, setSubscriptions }) {
   const [showAddForm, setShowAddForm] = useState(false);
   const [form, setForm] = useState(EMPTY_FORM);
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [filterStatus, setFilterStatus] = useState("All");
+  const accountOptions = accounts.filter((account) => accountSupportsTransactions(account));
 
   const updateForm = (field, value) => setForm((f) => ({ ...f, [field]: value }));
 
@@ -119,7 +102,10 @@ export function RecurringSubscriptions({ subscriptions, setSubscriptions }) {
     setSubscriptions((current) =>
       current.map((sub) => {
         if (sub.id !== id) return sub;
-        const next = STATUSES[(STATUSES.indexOf(sub.status) + 1) % STATUSES.length];
+        const next =
+          SUBSCRIPTION_STATUSES[
+            (SUBSCRIPTION_STATUSES.indexOf(sub.status) + 1) % SUBSCRIPTION_STATUSES.length
+          ];
         return { ...sub, status: next };
       })
     );
@@ -269,7 +255,7 @@ export function RecurringSubscriptions({ subscriptions, setSubscriptions }) {
           <div
             style={{
               display: "grid",
-              gridTemplateColumns: "1.4fr 110px 130px 130px 110px 110px 80px",
+              gridTemplateColumns: "1.4fr 110px 130px 140px 130px 110px 110px 80px",
               gap: 12,
               alignItems: "end",
             }}
@@ -331,7 +317,7 @@ export function RecurringSubscriptions({ subscriptions, setSubscriptions }) {
                 onChange={(e) => updateForm("frequency", e.target.value)}
                 style={selectStyle}
               >
-                {FREQUENCIES.map((f) => (
+                {SUBSCRIPTION_FREQUENCIES.map((f) => (
                   <option key={f} value={f} style={{ background: "#061224" }}>
                     {f}
                   </option>
@@ -358,6 +344,33 @@ export function RecurringSubscriptions({ subscriptions, setSubscriptions }) {
                 {CATEGORY_OPTIONS.map((c) => (
                   <option key={c} value={c} style={{ background: "#061224" }}>
                     {c}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label style={{ display: "grid", gap: 7 }}>
+              <span
+                style={{
+                  color: "#8fb1d9",
+                  fontSize: 11,
+                  textTransform: "uppercase",
+                  letterSpacing: 0.8,
+                  fontWeight: 900,
+                }}
+              >
+                Account
+              </span>
+              <select
+                value={form.account}
+                onChange={(e) => updateForm("account", e.target.value)}
+                style={selectStyle}
+              >
+                <option value="" style={{ background: "#061224" }}>
+                  Select account
+                </option>
+                {accountOptions.map((account) => (
+                  <option key={account.id} value={account.name} style={{ background: "#061224" }}>
+                    {account.name}
                   </option>
                 ))}
               </select>
@@ -441,7 +454,7 @@ export function RecurringSubscriptions({ subscriptions, setSubscriptions }) {
         }}
       >
         <span style={{ color: "#8fb1d9", fontSize: 13, marginRight: 4 }}>Filter:</span>
-        {["All", ...STATUSES].map((status) => (
+        {["All", ...SUBSCRIPTION_STATUSES].map((status) => (
           <button
             key={status}
             onClick={() => setFilterStatus(status)}
@@ -551,7 +564,7 @@ export function RecurringSubscriptions({ subscriptions, setSubscriptions }) {
                       Next Bill
                     </div>
                     <div style={{ color: "#b8d3f3", fontWeight: 700, marginTop: 3 }}>
-                      {sub.status === "Cancelled" ? "—" : nextBillingDate(sub.billing)}
+                      {sub.status === "Cancelled" ? "—" : nextBillingDate(sub.billing, sub.frequency)}
                     </div>
                   </div>
                   <div>
@@ -626,7 +639,29 @@ export function RecurringSubscriptions({ subscriptions, setSubscriptions }) {
             marginTop: 14,
           }}
         >
-          No subscriptions found. Add one above.
+          <div style={{ color: "white", fontSize: 24, fontWeight: 900 }}>
+            No recurring commitments tracked yet
+          </div>
+          <div style={{ marginTop: 10, lineHeight: 1.6 }}>
+            Add your subscriptions, insurance, memberships, or mortgage payments so Operations,
+            Forecast, and the Dashboard can see the fixed costs you carry every month.
+          </div>
+          <button
+            onClick={() => setShowAddForm(true)}
+            style={{
+              marginTop: 18,
+              background: "linear-gradient(90deg,#0077ff,#00d8ff)",
+              border: "1px solid rgba(0,216,255,.45)",
+              borderRadius: 10,
+              color: "white",
+              padding: "12px 18px",
+              cursor: "pointer",
+              fontWeight: 800,
+              boxShadow: "0 0 18px rgba(0,136,255,.28)",
+            }}
+          >
+            + Add First Subscription
+          </button>
         </div>
       ) : null}
 
