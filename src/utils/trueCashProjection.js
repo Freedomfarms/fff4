@@ -1,0 +1,80 @@
+import { budgetMonthNames, budgetMonths } from "../data/constants.jsx";
+import { money, parseMoney, wholeDollars } from "./format.js";
+
+const FALLBACK_OPEN_YEAR = 2026;
+
+const monthNameToBudgetMonth = Object.fromEntries(
+  budgetMonths.map((month) => [budgetMonthNames[month], month])
+);
+
+export function parseChartDate(date) {
+  const match = /^([A-Za-z]+)\s+\d{1,2},\s+(\d{4})$/.exec(date || "");
+  if (!match) {
+    return { year: FALLBACK_OPEN_YEAR };
+  }
+
+  const [, monthName, year] = match;
+  return {
+    month: monthNameToBudgetMonth[monthName],
+    year: Number(year) || FALLBACK_OPEN_YEAR,
+  };
+}
+
+export function buildSyncedTrueCashChart(baseChart, trueCash, valueToChartY) {
+  const numericValues = baseChart.values.map((value) => parseMoney(value));
+  const lastMockValue = numericValues[numericValues.length - 1] || trueCash;
+  const offset = trueCash - lastMockValue;
+  const adjustedValues = numericValues.map((value) => value + offset);
+  const firstValue = adjustedValues[0] || trueCash;
+  const change = trueCash - firstValue;
+  const percentChange = firstValue ? (change / firstValue) * 100 : 0;
+
+  return {
+    ...baseChart,
+    value: money(trueCash),
+    change: `${change >= 0 ? "+" : "-"}${money(Math.abs(change))} (${percentChange.toFixed(2)}%)`,
+    points: valueToChartY
+      ? baseChart.points.map((point, index) => [
+          point[0],
+          valueToChartY(adjustedValues[index] ?? trueCash),
+        ])
+      : baseChart.points,
+    values: adjustedValues.map((value) => money(value)),
+  };
+}
+
+export function buildTrueCashProjectionSchedule({
+  chart,
+  incomeStreams,
+  budgetRows,
+  projectionAdjustments = {},
+}) {
+  if (!chart.supportsProjection) return [];
+
+  const { year: projectionYear } = parseChartDate(chart.date);
+  let projectedValue = parseMoney(chart.values[0] || chart.value);
+
+  return budgetMonths.map((month) => {
+    const activeStreams = incomeStreams.filter((stream) =>
+      (stream.months || budgetMonths).includes(month)
+    );
+    const income = activeStreams.reduce((sum, stream) => sum + parseMoney(stream.amount), 0);
+    const budget = budgetRows
+      .filter((category) => (category.months || budgetMonths).includes(month))
+      .reduce((sum, category) => sum + Number(category.budget || 0), 0);
+    const profit = income - budget;
+    const adjustment = parseMoney(projectionAdjustments[month]);
+    projectedValue += profit + adjustment;
+
+    return {
+      month,
+      year: projectionYear,
+      date: `${month} ${projectionYear} Projection`,
+      value: projectedValue,
+      formattedValue: wholeDollars(projectedValue),
+      profit,
+      adjustment,
+      type: "projected",
+    };
+  });
+}

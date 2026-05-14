@@ -1,0 +1,1141 @@
+import { useEffect, useMemo, useState } from "react";
+import { transactionCategoryOptions } from "../data/constants.jsx";
+import { styles } from "../styles.js";
+import { money } from "../utils/format.js";
+import { accountSupportsTransactions } from "../utils/accounts.js";
+
+function formatManualDate(value) {
+  if (!value) return "";
+
+  const [year, month, day] = value.split("-").map(Number);
+  const date = new Date(year, month - 1, day);
+  if (Number.isNaN(date.getTime())) return "";
+
+  return date.toLocaleDateString("en-US", {
+    month: "long",
+    day: "numeric",
+    year: "numeric",
+  });
+}
+
+function parseManualAmount(value) {
+  const parsed = Number(String(value).replace(/[^0-9.-]/g, ""));
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function escapeCsvValue(value) {
+  const stringValue = String(value ?? "");
+  if (/[",\n]/.test(stringValue)) {
+    return `"${stringValue.replace(/"/g, '""')}"`;
+  }
+  return stringValue;
+}
+
+function formatDateTime(value) {
+  if (!value) return "Awaiting update";
+  return new Date(value).toLocaleString("en-US", {
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  });
+}
+
+function formatMoneyPerUnit(value, unitLabel) {
+  return `${money(value)}${unitLabel ? ` / ${unitLabel}` : ""}`;
+}
+
+function buildAccountProfile(account, accounts) {
+  if (!account) return null;
+
+  const linkedLoan = accounts.find((candidate) => candidate.id === account.linkedLoanId);
+  const linkedProperty = accounts.find((candidate) => candidate.id === account.linkedPropertyId);
+
+  const baseProfile = {
+    eyebrow: "Account Profile",
+    title: account.name,
+    subtitle: `${account.institution} • ${account.type}`,
+    highlights: [
+      { label: "Current Balance", value: money(account.balance) },
+      { label: "Status", value: account.status || "Manual" },
+    ],
+  };
+
+  if (account.type === "Crypto") {
+    return {
+      ...baseProfile,
+      highlights: [
+        ...baseProfile.highlights,
+        { label: "Asset", value: `${account.cryptoName} (${account.cryptoSymbol})` },
+        { label: "Quantity", value: `${account.quantity || 0}` },
+        { label: "Live Price", value: formatMoneyPerUnit(account.lastPriceUsd, account.cryptoSymbol) },
+        { label: "Updated", value: formatDateTime(account.lastPriceUpdatedAt) },
+      ],
+      note: "Quantity-based account. Value is derived from holdings x live market price.",
+    };
+  }
+
+  if (account.type === "Precious Metals") {
+    return {
+      ...baseProfile,
+      highlights: [
+        ...baseProfile.highlights,
+        {
+          label: "Metal",
+          value:
+            account.metalType === "Custom" && account.metalCustomName
+              ? account.metalCustomName
+              : account.metalType,
+        },
+        { label: "Quantity", value: `${account.quantity || 0} ${account.metalUnit}` },
+        {
+          label: "Valuation",
+          value: formatMoneyPerUnit(account.pricePerUnit, account.metalUnit),
+        },
+        { label: "Source", value: account.valuationSource || "Manual" },
+        { label: "Updated", value: formatDateTime(account.lastValuedAt) },
+      ],
+      note: "Metals accounts are valuation-based and don’t post transaction ledger activity.",
+    };
+  }
+
+  if (account.type === "Real Estate") {
+    return {
+      ...baseProfile,
+      highlights: [
+        ...baseProfile.highlights,
+        { label: "Property Type", value: account.propertyType || "Property" },
+        { label: "Address", value: account.propertyAddress || "Not set" },
+        {
+          label: "Market Value",
+          value: account.propertyMarketValue ? money(account.propertyMarketValue) : "Not set",
+        },
+        { label: "Equity Mode", value: account.equitySource || "Manual" },
+        { label: "Linked Loan", value: linkedLoan?.name || "Not linked" },
+        { label: "Updated", value: formatDateTime(account.lastValuedAt) },
+      ],
+      note: "Real estate accounts track equity, not cashflow. Link a loan and market value to derive equity automatically.",
+    };
+  }
+
+  if (account.type === "Mortgages / Loans") {
+    return {
+      ...baseProfile,
+      highlights: [
+        ...baseProfile.highlights,
+        { label: "Loan Type", value: account.loanCategory || "Loan" },
+        { label: "APR", value: account.interestRate ? `${account.interestRate}%` : "Not set" },
+        { label: "Monthly Payment", value: account.monthlyPayment || "Not set" },
+        { label: "Linked Property", value: linkedProperty?.name || "Not linked" },
+      ],
+      note: "Loans are liability records. Use the linked property field to automate real-estate equity.",
+    };
+  }
+
+  if (account.type === "Credit Card") {
+    return {
+      ...baseProfile,
+      highlights: [
+        ...baseProfile.highlights,
+        { label: "Posting Mode", value: "Transactional" },
+        { label: "Debt Treatment", value: "Included in True Cash" },
+      ],
+      note: "Credit cards post transactions and automatically reduce True Cash through the shared debt model.",
+    };
+  }
+
+  return {
+    ...baseProfile,
+    highlights: [
+      ...baseProfile.highlights,
+      { label: "Posting Mode", value: "Transactional" },
+      { label: "Ledger", value: "Supports manual and synced transactions" },
+    ],
+    note: "Cash and bank accounts feed the live transaction ledger and the shared True Cash calculation.",
+  };
+}
+
+export function TransactionsView({
+  accounts,
+  budgetRows,
+  selectedAccount,
+  visibleTransactions,
+  setActiveTab,
+  setSelectedAccount,
+  connectMockPlaidAccount,
+  addManualTransaction,
+  deleteManualTransaction,
+  updateTransactionCategory,
+}) {
+  const selectedAccountRecord = selectedAccount
+    ? accounts.find((account) => account.name === selectedAccount) || null
+    : null;
+  const transactionCapableAccounts = accounts.filter((account) => accountSupportsTransactions(account));
+  const [manualForm, setManualForm] = useState({
+    date: "2026-05-13",
+    merchant: "",
+    account:
+      accountSupportsTransactions(selectedAccountRecord)
+        ? selectedAccount || transactionCapableAccounts[0]?.name || ""
+        : transactionCapableAccounts[0]?.name || "",
+    amount: "",
+    category: "",
+  });
+  const [deleteTarget, setDeleteTarget] = useState(null);
+  const [showFilters, setShowFilters] = useState(false);
+  const [filters, setFilters] = useState({
+    search: "",
+    category: "All",
+    account: selectedAccount || "All",
+    direction: "All",
+    source: "All",
+  });
+  const accountOptions = transactionCapableAccounts.map((account) => account.name);
+  const categoryOptions = Array.from(
+    new Set([
+      ...transactionCategoryOptions,
+      ...budgetRows.flatMap((row) => row.transactionCategories || []),
+      ...budgetRows.map((row) => row.name).filter(Boolean),
+      ...visibleTransactions.map((tx) => tx.category).filter(Boolean),
+    ])
+  ).sort();
+  const filterAccountOptions = Array.from(
+    new Set(visibleTransactions.map((tx) => tx.account).filter(Boolean))
+  ).sort();
+  const filteredTransactions = useMemo(() => {
+    const search = filters.search.trim().toLowerCase();
+    return visibleTransactions.filter((tx) => {
+      if (filters.category !== "All" && tx.category !== filters.category) return false;
+      if (filters.account !== "All" && tx.account !== filters.account) return false;
+      if (filters.direction === "Outflow" && tx.amount >= 0) return false;
+      if (filters.direction === "Inflow" && tx.amount <= 0) return false;
+      if (filters.source === "Manual" && tx.source !== "manual") return false;
+      if (filters.source === "Synced" && tx.source === "manual") return false;
+      if (
+        search &&
+        !`${tx.date} ${tx.merchant} ${tx.category} ${tx.account}`.toLowerCase().includes(search)
+      ) {
+        return false;
+      }
+      return true;
+    });
+  }, [filters, visibleTransactions]);
+  const monthlySpend = filteredTransactions
+    .filter((tx) => tx.amount < 0)
+    .reduce((sum, tx) => sum + Math.abs(tx.amount), 0);
+  const cashInflow = filteredTransactions
+    .filter((tx) => tx.amount > 0)
+    .reduce((sum, tx) => sum + tx.amount, 0);
+  const selectedCategory = manualForm.category || categoryOptions[0] || "Other";
+  const accountProfile = buildAccountProfile(selectedAccountRecord, accounts);
+  const isSelectedNonTransactionalAccount = selectedAccountRecord
+    ? !accountSupportsTransactions(selectedAccountRecord)
+    : false;
+  const canAddManualTransaction =
+    !isSelectedNonTransactionalAccount &&
+    manualForm.date &&
+    manualForm.merchant.trim() &&
+    manualForm.account.trim() &&
+    accountOptions.includes(manualForm.account) &&
+    Number.isFinite(parseManualAmount(manualForm.amount)) &&
+    parseManualAmount(manualForm.amount) !== 0;
+
+  useEffect(() => {
+    if (isSelectedNonTransactionalAccount) return;
+
+    const nextDefaultAccount =
+      accountSupportsTransactions(selectedAccountRecord)
+        ? selectedAccountRecord?.name
+        : transactionCapableAccounts[0]?.name || "";
+
+    setManualForm((current) =>
+      current.account === nextDefaultAccount || (current.account && !selectedAccount)
+        ? current
+        : { ...current, account: nextDefaultAccount }
+    );
+  }, [
+    isSelectedNonTransactionalAccount,
+    selectedAccount,
+    selectedAccountRecord,
+    transactionCapableAccounts,
+  ]);
+
+  useEffect(() => {
+    setFilters((current) => ({
+      ...current,
+      account: selectedAccount || "All",
+    }));
+  }, [selectedAccount]);
+
+  const updateManualForm = (field, value) => {
+    setManualForm((current) => ({ ...current, [field]: value }));
+  };
+
+  const updateFilters = (field, value) => {
+    setFilters((current) => ({ ...current, [field]: value }));
+  };
+
+  const clearFilters = () => {
+    setFilters({
+      search: "",
+      category: "All",
+      account: selectedAccount || "All",
+      direction: "All",
+      source: "All",
+    });
+  };
+
+  const submitManualTransaction = (event) => {
+    event.preventDefault();
+    if (!canAddManualTransaction) return;
+
+    const didAddTransaction = addManualTransaction({
+      date: formatManualDate(manualForm.date),
+      merchant: manualForm.merchant.trim(),
+      category: selectedCategory,
+      account: manualForm.account.trim(),
+      amount: parseManualAmount(manualForm.amount),
+    });
+    if (!didAddTransaction) return;
+
+    setManualForm((current) => ({
+      date: current.date,
+      merchant: "",
+      account: selectedAccount || current.account,
+      amount: "",
+      category: current.category,
+    }));
+  };
+
+  const exportFilteredTransactions = () => {
+    const rows = [
+      ["Date", "Merchant", "Category", "Account", "Amount", "Source"],
+      ...filteredTransactions.map((tx) => [
+        tx.date,
+        tx.merchant,
+        tx.category,
+        tx.account,
+        tx.amount,
+        tx.source === "manual" ? "Manual" : "Synced",
+      ]),
+    ];
+    const csv = rows.map((row) => row.map(escapeCsvValue).join(",")).join("\n");
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    const accountSlug = selectedAccount ? selectedAccount.replace(/\s+/g, "-").toLowerCase() : "all-accounts";
+    link.href = url;
+    link.download = `transactions-${accountSlug}.csv`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  };
+
+  return (
+    <div>
+      <header
+        style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          marginBottom: 24,
+        }}
+      >
+        <div>
+          <h1 style={{ margin: 0, fontSize: 32, color: "white", fontWeight: 800 }}>Transactions</h1>
+          <p style={{ marginTop: 8, color: "#8ea8ca" }}>
+            Connected accounts, live spending intelligence, and synced Plaid transaction feeds.
+          </p>
+        </div>
+        <button
+          onClick={connectMockPlaidAccount}
+          style={{
+            background: "linear-gradient(90deg,#00aaff,#0077ff)",
+            border: "1px solid rgba(120,220,255,.45)",
+            borderRadius: 10,
+            color: "white",
+            padding: "14px 24px",
+            fontWeight: 800,
+            boxShadow: "0 0 28px rgba(0,136,255,.35)",
+            cursor: "pointer",
+          }}
+        >
+          ⊕ Connect with Plaid
+        </button>
+      </header>
+
+      <div
+        style={{
+          ...styles.panel,
+          padding: 24,
+          marginBottom: 18,
+          position: "relative",
+          overflow: "hidden",
+        }}
+      >
+        <div
+          style={{
+            position: "absolute",
+            inset: 0,
+            background:
+              "radial-gradient(circle at top right, rgba(0,216,255,.14), transparent 35%)",
+          }}
+        />
+        <div
+          style={{
+            position: "relative",
+            display: "grid",
+            gridTemplateColumns: "repeat(4,1fr)",
+            gap: 18,
+          }}
+        >
+          {[
+            ["Connected Accounts", String(accounts.length)],
+            ["Monthly Spend", money(monthlySpend)],
+            ["Visible Transactions", String(filteredTransactions.length)],
+            ["Cash Inflow", money(cashInflow)],
+          ].map((item) => (
+            <div
+              key={item[0]}
+              style={{
+                border: "1px solid rgba(0,136,255,.22)",
+                borderRadius: 14,
+                background: "rgba(3,17,32,.72)",
+                padding: 20,
+              }}
+            >
+              <div
+                style={{
+                  color: "#8fb1d9",
+                  fontSize: 13,
+                  textTransform: "uppercase",
+                  marginBottom: 12,
+                }}
+              >
+                {item[0]}
+              </div>
+              <div style={{ color: "white", fontSize: 30, fontWeight: 800 }}>{item[1]}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {isSelectedNonTransactionalAccount ? (
+        <div
+          style={{
+            ...styles.panel,
+            padding: 22,
+            marginBottom: 18,
+            border: "1px solid rgba(0,216,255,.22)",
+            boxShadow: "inset 0 0 22px rgba(0,136,255,.06)",
+          }}
+        >
+          <div style={{ color: "white", fontSize: 20, fontWeight: 900 }}>Account Valuation</div>
+          <div style={{ color: "#8ea8ca", fontSize: 13, marginTop: 8, lineHeight: 1.6 }}>
+            {selectedAccountRecord?.type === "Crypto"
+              ? "Crypto accounts are quantity-based. Their balance comes from the stored holding quantity multiplied by the latest market price, so manual transaction entry is disabled to keep the account value in sync with the live quote."
+              : selectedAccountRecord?.type === "Precious Metals"
+                ? "Precious metals accounts are valuation-based. Their balance comes from quantity and manual spot pricing, so transaction entry is disabled to keep the holding value clean."
+                : selectedAccountRecord?.type === "Real Estate"
+                  ? "Real estate accounts track equity instead of cashflow, so transaction entry is disabled on the property valuation record."
+                  : "Mortgage and loan accounts track liabilities directly, so transaction entry is disabled on the balance record."}
+          </div>
+        </div>
+      ) : (
+        <form
+          onSubmit={submitManualTransaction}
+          style={{
+            ...styles.panel,
+            padding: 22,
+            marginBottom: 18,
+            border: "1px solid rgba(255,159,28,.22)",
+            boxShadow: "inset 0 0 22px rgba(255,159,28,.06)",
+          }}
+        >
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+              gap: 18,
+              marginBottom: 18,
+            }}
+          >
+            <div>
+              <div style={{ color: "white", fontSize: 20, fontWeight: 900 }}>
+                Manual Transaction Entry
+              </div>
+              <div style={{ color: "#8ea8ca", fontSize: 13, marginTop: 6 }}>
+                Add cash buys, offline credit cards, future payments, or backfilled transactions.
+              </div>
+            </div>
+            <button
+              type="submit"
+              disabled={!canAddManualTransaction}
+              style={{
+                background: canAddManualTransaction
+                  ? "linear-gradient(90deg,#ff9f1c,#ff6b1c)"
+                  : "rgba(120,130,150,.18)",
+                border: canAddManualTransaction
+                  ? "1px solid rgba(255,208,138,.55)"
+                  : "1px solid rgba(160,175,200,.16)",
+                borderRadius: 10,
+                color: canAddManualTransaction ? "white" : "#7f93ad",
+                padding: "12px 18px",
+                fontWeight: 900,
+                cursor: canAddManualTransaction ? "pointer" : "not-allowed",
+                boxShadow: canAddManualTransaction ? "0 0 24px rgba(255,159,28,.28)" : "none",
+              }}
+            >
+              + Add Manual Transaction
+            </button>
+          </div>
+
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "140px minmax(105px,.7fr) minmax(115px,.7fr) 88px 118px",
+              gap: 10,
+              alignItems: "center",
+            }}
+          >
+          {[
+            ["date", "Date", "date"],
+            ["merchant", "Merchant", "text"],
+            ["amount", "Amount", "text"],
+          ].map(([field, label, type]) => (
+            <label key={field} style={{ display: "grid", gap: 7, minWidth: 0 }}>
+              <span
+                style={{
+                  color: "#8fb1d9",
+                  fontSize: 11,
+                  textTransform: "uppercase",
+                  letterSpacing: 0.8,
+                  fontWeight: 900,
+                }}
+              >
+                {label}
+              </span>
+              <input
+                type={type}
+                value={manualForm[field]}
+                placeholder={
+                  field === "amount"
+                    ? "-45.00"
+                    : field === "merchant"
+                      ? "Merchant name"
+                      : undefined
+                }
+                onChange={(event) => updateManualForm(field, event.target.value)}
+                style={{
+                  color: "#eaf3ff",
+                  background: "rgba(0,136,255,.08)",
+                  border: "1px solid rgba(0,216,255,.18)",
+                  borderRadius: 8,
+                  padding: "10px 11px",
+                  outline: "none",
+                  fontWeight: 800,
+                  colorScheme: "dark",
+                  minWidth: 0,
+                }}
+              />
+            </label>
+          ))}
+
+            <label style={{ display: "grid", gap: 7, minWidth: 0 }}>
+              <span
+                style={{
+                  color: "#8fb1d9",
+                  fontSize: 11,
+                  textTransform: "uppercase",
+                  letterSpacing: 0.8,
+                  fontWeight: 900,
+                }}
+              >
+                Account
+              </span>
+              <select
+                value={manualForm.account}
+                onChange={(event) => updateManualForm("account", event.target.value)}
+                disabled={Boolean(selectedAccount)}
+                style={{
+                  color: "#eaf3ff",
+                  background: selectedAccount ? "rgba(0,136,255,.04)" : "rgba(0,136,255,.08)",
+                  border: "1px solid rgba(0,216,255,.18)",
+                  borderRadius: 8,
+                  padding: "10px 11px",
+                  outline: "none",
+                  fontWeight: 800,
+                  minWidth: 0,
+                  opacity: selectedAccount ? 0.88 : 1,
+                }}
+              >
+                {accountOptions.map((accountName) => (
+                  <option key={accountName} value={accountName} style={{ background: "#061224" }}>
+                    {accountName}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+          <label style={{ display: "grid", gap: 7, minWidth: 0 }}>
+            <span
+              style={{
+                color: "#8fb1d9",
+                fontSize: 11,
+                textTransform: "uppercase",
+                letterSpacing: 0.8,
+                fontWeight: 900,
+              }}
+            >
+              Category
+            </span>
+            <select
+              value={selectedCategory}
+              onChange={(event) => updateManualForm("category", event.target.value)}
+              style={{
+                color: "#eaf3ff",
+                background: "rgba(0,136,255,.08)",
+                border: "1px solid rgba(0,216,255,.18)",
+                borderRadius: 8,
+                padding: "10px 11px",
+                outline: "none",
+                fontWeight: 800,
+                minWidth: 0,
+              }}
+            >
+              {categoryOptions.map((category) => (
+                <option key={category} value={category} style={{ background: "#061224" }}>
+                  {category}
+                </option>
+              ))}
+            </select>
+          </label>
+          </div>
+          <div style={{ color: "#8ea8ca", fontSize: 12, marginTop: 12 }}>
+            Use negative amounts for purchases/outflows and positive amounts for deposits, credits, or
+            reimbursements. Manual entries post directly into the selected account balance.
+          </div>
+        </form>
+      )}
+
+      <div style={{ ...styles.panel, padding: 24 }}>
+        {selectedAccount ? (
+          <>
+            <div
+              style={{
+                marginBottom: 18,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                borderBottom: "1px solid rgba(0,136,255,.12)",
+                paddingBottom: 16,
+              }}
+            >
+              <div>
+                <div
+                  style={{
+                    color: "#8feaff",
+                    fontSize: 12,
+                    textTransform: "uppercase",
+                    letterSpacing: 1.2,
+                  }}
+                >
+                  Selected Account
+                </div>
+                <div style={{ color: "white", fontSize: 26, fontWeight: 800, marginTop: 6 }}>
+                  {selectedAccount}
+                </div>
+              </div>
+              <button
+                onClick={() => {
+                  setSelectedAccount(null);
+                  setActiveTab("Add Accounts");
+                }}
+                style={{
+                  background: "rgba(0,136,255,.12)",
+                  border: "1px solid rgba(0,216,255,.28)",
+                  color: "#d7ebff",
+                  borderRadius: 8,
+                  padding: "10px 14px",
+                  cursor: "pointer",
+                  fontWeight: 700,
+                }}
+              >
+                ← Back to Accounts
+              </button>
+            </div>
+
+            {accountProfile ? (
+              <div
+                style={{
+                  border: "1px solid rgba(0,136,255,.22)",
+                  borderRadius: 16,
+                  background: "rgba(3,17,32,.72)",
+                  padding: 20,
+                  marginBottom: 18,
+                  boxShadow: "inset 0 0 24px rgba(0,80,160,.08)",
+                }}
+              >
+                <div style={{ display: "flex", justifyContent: "space-between", gap: 20 }}>
+                  <div>
+                    <div
+                      style={{
+                        color: "#8feaff",
+                        fontSize: 12,
+                        textTransform: "uppercase",
+                        letterSpacing: 1,
+                        fontWeight: 800,
+                      }}
+                    >
+                      {accountProfile.eyebrow}
+                    </div>
+                    <div style={{ color: "white", fontSize: 26, fontWeight: 900, marginTop: 8 }}>
+                      {accountProfile.title}
+                    </div>
+                    <div style={{ color: "#8fb1d9", fontSize: 14, marginTop: 8 }}>
+                      {accountProfile.subtitle}
+                    </div>
+                  </div>
+                  <div
+                    style={{
+                      color: selectedAccountRecord.balance < 0 ? "#ff8fa3" : "#eaf3ff",
+                      fontSize: 28,
+                      fontWeight: 900,
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    {money(selectedAccountRecord.balance)}
+                  </div>
+                </div>
+
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
+                    gap: 14,
+                    marginTop: 18,
+                  }}
+                >
+                  {accountProfile.highlights.map((item) => (
+                    <div
+                      key={item.label}
+                      style={{
+                        border: "1px solid rgba(0,136,255,.14)",
+                        borderRadius: 12,
+                        background: "rgba(0,22,48,.36)",
+                        padding: "14px 16px",
+                      }}
+                    >
+                      <div
+                        style={{
+                          color: "#8fb1d9",
+                          fontSize: 11,
+                          textTransform: "uppercase",
+                          letterSpacing: 0.8,
+                          marginBottom: 8,
+                        }}
+                      >
+                        {item.label}
+                      </div>
+                      <div style={{ color: "white", fontSize: 15, fontWeight: 800 }}>{item.value}</div>
+                    </div>
+                  ))}
+                </div>
+
+                <div style={{ color: "#8ea8ca", fontSize: 13, lineHeight: 1.6, marginTop: 16 }}>
+                  {accountProfile.note}
+                </div>
+              </div>
+            ) : null}
+          </>
+        ) : null}
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+            marginBottom: 22,
+          }}
+        >
+          <div style={{ color: "white", fontSize: 22, fontWeight: 700 }}>
+            {selectedAccount ? `${selectedAccount} Transactions` : "Live Transaction Feed"}
+          </div>
+          <div style={{ display: "flex", gap: 12 }}>
+            <button
+              onClick={() => setShowFilters((current) => !current)}
+              style={{
+                background: "rgba(0,136,255,.12)",
+                border: "1px solid rgba(0,136,255,.28)",
+                color: "#d7ebff",
+                borderRadius: 8,
+                padding: "10px 14px",
+                cursor: "pointer",
+              }}
+            >
+              {showFilters ? "Hide Filters" : "Filter"}
+            </button>
+            <button
+              onClick={exportFilteredTransactions}
+              style={{
+                background: "rgba(0,136,255,.12)",
+                border: "1px solid rgba(0,136,255,.28)",
+                color: "#d7ebff",
+                borderRadius: 8,
+                padding: "10px 14px",
+                cursor: "pointer",
+              }}
+            >
+              Export
+            </button>
+          </div>
+        </div>
+
+        {showFilters ? (
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "1.4fr 1fr 1fr 1fr 1fr auto",
+              gap: 10,
+              marginBottom: 18,
+              padding: 16,
+              borderRadius: 14,
+              border: "1px solid rgba(0,136,255,.18)",
+              background: "rgba(0,22,48,.36)",
+              alignItems: "end",
+            }}
+          >
+            <label style={{ display: "grid", gap: 7 }}>
+              <span style={{ color: "#8fb1d9", fontSize: 11, textTransform: "uppercase", letterSpacing: 0.8, fontWeight: 900 }}>
+                Search
+              </span>
+              <input
+                type="text"
+                value={filters.search}
+                onChange={(event) => updateFilters("search", event.target.value)}
+                placeholder="Merchant, category, account..."
+                style={{
+                  color: "#eaf3ff",
+                  background: "rgba(0,136,255,.08)",
+                  border: "1px solid rgba(0,216,255,.18)",
+                  borderRadius: 8,
+                  padding: "10px 11px",
+                  outline: "none",
+                  fontWeight: 700,
+                }}
+              />
+            </label>
+            <label style={{ display: "grid", gap: 7 }}>
+              <span style={{ color: "#8fb1d9", fontSize: 11, textTransform: "uppercase", letterSpacing: 0.8, fontWeight: 900 }}>
+                Category
+              </span>
+              <select
+                value={filters.category}
+                onChange={(event) => updateFilters("category", event.target.value)}
+                style={{
+                  color: "#eaf3ff",
+                  background: "rgba(0,136,255,.08)",
+                  border: "1px solid rgba(0,216,255,.18)",
+                  borderRadius: 8,
+                  padding: "10px 11px",
+                  outline: "none",
+                  fontWeight: 700,
+                }}
+              >
+                <option value="All" style={{ background: "#061224" }}>All</option>
+                {categoryOptions.map((category) => (
+                  <option key={category} value={category} style={{ background: "#061224" }}>
+                    {category}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label style={{ display: "grid", gap: 7 }}>
+              <span style={{ color: "#8fb1d9", fontSize: 11, textTransform: "uppercase", letterSpacing: 0.8, fontWeight: 900 }}>
+                Account
+              </span>
+              <select
+                value={filters.account}
+                onChange={(event) => updateFilters("account", event.target.value)}
+                disabled={Boolean(selectedAccount)}
+                style={{
+                  color: "#eaf3ff",
+                  background: "rgba(0,136,255,.08)",
+                  border: "1px solid rgba(0,216,255,.18)",
+                  borderRadius: 8,
+                  padding: "10px 11px",
+                  outline: "none",
+                  fontWeight: 700,
+                  opacity: selectedAccount ? 0.82 : 1,
+                }}
+              >
+                <option value="All" style={{ background: "#061224" }}>All</option>
+                {filterAccountOptions.map((accountName) => (
+                  <option key={accountName} value={accountName} style={{ background: "#061224" }}>
+                    {accountName}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label style={{ display: "grid", gap: 7 }}>
+              <span style={{ color: "#8fb1d9", fontSize: 11, textTransform: "uppercase", letterSpacing: 0.8, fontWeight: 900 }}>
+                Direction
+              </span>
+              <select
+                value={filters.direction}
+                onChange={(event) => updateFilters("direction", event.target.value)}
+                style={{
+                  color: "#eaf3ff",
+                  background: "rgba(0,136,255,.08)",
+                  border: "1px solid rgba(0,216,255,.18)",
+                  borderRadius: 8,
+                  padding: "10px 11px",
+                  outline: "none",
+                  fontWeight: 700,
+                }}
+              >
+                {["All", "Inflow", "Outflow"].map((option) => (
+                  <option key={option} value={option} style={{ background: "#061224" }}>
+                    {option}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label style={{ display: "grid", gap: 7 }}>
+              <span style={{ color: "#8fb1d9", fontSize: 11, textTransform: "uppercase", letterSpacing: 0.8, fontWeight: 900 }}>
+                Source
+              </span>
+              <select
+                value={filters.source}
+                onChange={(event) => updateFilters("source", event.target.value)}
+                style={{
+                  color: "#eaf3ff",
+                  background: "rgba(0,136,255,.08)",
+                  border: "1px solid rgba(0,216,255,.18)",
+                  borderRadius: 8,
+                  padding: "10px 11px",
+                  outline: "none",
+                  fontWeight: 700,
+                }}
+              >
+                {["All", "Synced", "Manual"].map((option) => (
+                  <option key={option} value={option} style={{ background: "#061224" }}>
+                    {option}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <button
+              type="button"
+              onClick={clearFilters}
+              style={{
+                background: "rgba(0,136,255,.10)",
+                border: "1px solid rgba(0,216,255,.20)",
+                borderRadius: 8,
+                color: "#d7ebff",
+                padding: "10px 14px",
+                cursor: "pointer",
+                fontWeight: 800,
+              }}
+            >
+              Clear
+            </button>
+          </div>
+        ) : null}
+
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "140px 1.4fr 1fr 1fr 160px",
+            padding: "0 16px 12px",
+            color: "#7294bb",
+            fontSize: 13,
+            textTransform: "uppercase",
+            letterSpacing: 1,
+            borderBottom: "1px solid rgba(0,136,255,.14)",
+          }}
+        >
+          <div>Date</div>
+          <div>Merchant</div>
+          <div>Category</div>
+          <div>Account</div>
+          <div style={{ textAlign: "right" }}>Amount</div>
+        </div>
+
+        <div style={{ maxHeight: "62vh", overflowY: "auto", paddingRight: 4 }}>
+          {visibleTransactions.length > 0 ? (
+            filteredTransactions.map((tx, index) => (
+              <div
+                key={`${tx.id || tx.date}-${tx.merchant}-${tx.account}-${tx.amount}`}
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "140px 1.4fr 1fr 1fr 160px",
+                  alignItems: "center",
+                  padding: "12px 16px",
+                  borderBottom: "1px solid rgba(0,136,255,.08)",
+                  background: index % 2 === 0 ? "rgba(255,255,255,.01)" : "transparent",
+                }}
+              >
+                <div
+                  onDoubleClick={(event) => {
+                    if (tx.source !== "manual") return;
+                    event.preventDefault();
+                    event.stopPropagation();
+                    setDeleteTarget(tx);
+                  }}
+                  title={tx.source === "manual" ? "Double click to delete manual transaction" : ""}
+                  style={{
+                    color: tx.source === "manual" ? "#ffd08a" : "#8fb1d9",
+                    fontSize: 14,
+                    cursor: tx.source === "manual" ? "pointer" : "default",
+                  }}
+                >
+                  {tx.date}
+                </div>
+                <div style={{ color: "white", fontWeight: 700 }}>{tx.merchant}</div>
+                <select
+                  value={tx.category}
+                  onChange={(event) => updateTransactionCategory(tx, event.target.value)}
+                  style={{
+                    color: "#b8d3f3",
+                    background: "rgba(0,136,255,.08)",
+                    border: "1px solid rgba(0,216,255,.18)",
+                    borderRadius: 8,
+                    padding: "8px 10px",
+                    outline: "none",
+                    width: "92%",
+                    cursor: "pointer",
+                    boxShadow: "inset 0 0 14px rgba(0,136,255,.08)",
+                  }}
+                >
+                  {categoryOptions.map((category) => (
+                    <option
+                      key={category}
+                      value={category}
+                      style={{ background: "#061224", color: "#eaf3ff" }}
+                    >
+                      {category}
+                    </option>
+                  ))}
+                  {!categoryOptions.includes(tx.category) ? (
+                    <option value={tx.category} style={{ background: "#061224", color: "#eaf3ff" }}>
+                      {tx.category}
+                    </option>
+                  ) : null}
+                </select>
+                <div style={{ color: "#7ebeff" }}>{tx.account}</div>
+                <div
+                  style={{
+                    textAlign: "right",
+                    color: tx.amount > 0 ? "#00f59b" : "#ff5d7a",
+                    fontWeight: 800,
+                    fontSize: 15,
+                  }}
+                >
+                  {tx.amount > 0 ? "+" : ""}$
+                  {Math.abs(tx.amount).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                </div>
+              </div>
+            ))
+          ) : (
+            <div
+              style={{
+                padding: "34px 16px",
+                color: "#8ea8ca",
+                textAlign: "center",
+                fontSize: 14,
+              }}
+            >
+              {selectedAccount
+                ? isSelectedNonTransactionalAccount
+                  ? `${selectedAccount} is a valuation-based account, so it does not keep a spending ledger here. Manage its value from Add Accounts.`
+                  : filters.search || filters.category !== "All" || filters.account !== (selectedAccount || "All") || filters.direction !== "All" || filters.source !== "All"
+                    ? `No transactions in ${selectedAccount} match the current filters.`
+                    : `No transactions have posted to ${selectedAccount} yet. Add one manually or sync the account to keep balances and budgets in sync.`
+                : filters.search || filters.category !== "All" || filters.account !== "All" || filters.direction !== "All" || filters.source !== "All"
+                  ? "No transactions match the current filters."
+                  : "No transactions are available yet. Add a transactional account or connect Plaid to begin building the live ledger."}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {deleteTarget ? (
+        <div
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(0,5,14,.72)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            zIndex: 9999,
+          }}
+        >
+          <div
+            style={{
+              ...styles.panel,
+              width: 420,
+              padding: 26,
+              boxShadow: "0 0 55px rgba(0,136,255,.34)",
+            }}
+          >
+            <div
+              style={{
+                color: "#8feaff",
+                fontSize: 12,
+                textTransform: "uppercase",
+                letterSpacing: 1.2,
+                marginBottom: 10,
+              }}
+            >
+              Confirm Delete
+            </div>
+            <div style={{ color: "white", fontSize: 26, fontWeight: 900, lineHeight: 1.15 }}>
+              Delete manual transaction?
+            </div>
+            <p style={{ color: "#a8bfdc", lineHeight: 1.55, marginTop: 14 }}>
+              This removes {deleteTarget.merchant} on {deleteTarget.date}. Connected transactions
+              are not affected.
+            </p>
+            <div style={{ display: "flex", gap: 12, justifyContent: "flex-end", marginTop: 24 }}>
+              <button
+                onClick={() => setDeleteTarget(null)}
+                style={{
+                  background: "rgba(0,136,255,.10)",
+                  border: "1px solid rgba(0,216,255,.28)",
+                  color: "#d7ebff",
+                  borderRadius: 8,
+                  padding: "11px 16px",
+                  cursor: "pointer",
+                  fontWeight: 800,
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => {
+                  deleteManualTransaction(deleteTarget.id);
+                  setDeleteTarget(null);
+                }}
+                style={{
+                  background: "linear-gradient(90deg,#ff244d,#ff5d7a)",
+                  border: "1px solid rgba(255,93,122,.55)",
+                  color: "white",
+                  borderRadius: 8,
+                  padding: "11px 16px",
+                  cursor: "pointer",
+                  fontWeight: 900,
+                  boxShadow: "0 0 22px rgba(255,36,77,.32)",
+                }}
+              >
+                Delete Transaction
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+    </div>
+  );
+}
